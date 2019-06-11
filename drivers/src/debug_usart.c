@@ -13,7 +13,7 @@ void debug_usart_unbind(void)
         debug_usart = 0;      
 }
 
-void debug_usart_putchar(char c)
+uint32_t debug_usart_putchar(char c)
 {
         if (debug_usart == 0) {
                 return DEBUG_USART_ERR_NO_USART;
@@ -25,7 +25,7 @@ void debug_usart_putchar(char c)
         return DEBUG_USART_SUCCESS;
 }
 
-void debug_usart_print(char *s)
+uint32_t debug_usart_print(char *s)
 {
         if (debug_usart == 0) {
                 return DEBUG_USART_ERR_NO_USART;
