@@ -59,7 +59,6 @@ void motor_write_reg(uint8_t reg, uint32_t command);
 
 int main(void)
 {
-
         clock_init();
         io_init();
         spi_init();
@@ -111,6 +110,27 @@ int main(void)
 
                 int32_t location = 0;
                 int32_t diff = 1000;
+
+                uint32_t e = 0;
+                while(1) {
+                        motor_write_reg(MOTOR_XTARGET_0, 0+e);
+                        motor_write_reg(MOTOR_XTARGET_1, 0-e);
+                        for(int i=0; i<50000000; i++) {__asm("nop");}
+                        motor_write_reg(MOTOR_XTARGET_0, 100000-e);
+                        motor_write_reg(MOTOR_XTARGET_1, 0-e);
+                        for(int i=0; i<50000000; i++) {__asm("nop");}
+                        motor_write_reg(MOTOR_XTARGET_0, 100000-e);
+                        motor_write_reg(MOTOR_XTARGET_1, 100000+e);
+                        for(int i=0; i<50000000; i++) {__asm("nop");}
+                        motor_write_reg(MOTOR_XTARGET_0, 0+e);
+                        motor_write_reg(MOTOR_XTARGET_1, 100000+e);
+                        for(int i=0; i<50000000; i++) {__asm("nop");}
+                        motor_write_reg(MOTOR_XTARGET_0, 0+e);
+                        motor_write_reg(MOTOR_XTARGET_1, 0-e);
+                        for(int i=0; i<50000000; i++) {__asm("nop");}
+                        e += 10000;
+                }
+
                 while(1){
                         motor_write_reg(MOTOR_XTARGET_0, location);
                         motor_write_reg(MOTOR_XTARGET_1, location);
@@ -121,13 +141,21 @@ int main(void)
                         if(location > 1000000) {
                                 diff = -1000;
                         }
-                        for(int i=0; i<500000; i++) {__asm("nop");}
+                        for(int i=0; i<5000000; i++) {__asm("nop");}
                         debug_usart_print("H\n");
 
                 }
         }
 }
-
+/*
+void pen_move_to(float x, float y)
+{
+        uint32_t A, uint32_t B;
+        A = x + y;
+        B = x - y;
+        motor_write_reg(MOTOR_XTARGET_0, A);
+        motor_write_reg(MOTOR_XTARGET_1, B);
+}*/
 
 void clock_init(void)
 {
