@@ -46,6 +46,15 @@
 #define MOTOR_PWMCONF_REG_0 0x10
 #define MOTOR_PWMCONF_REG_1 0x18
 
+struct tmc5041_command {
+        uint8_t  reg;
+        uint32_t data;
+};
+
+struct tmc5041_reply {
+        uint8_t  status;
+        uint32_t data;
+};
 
 void clock_init(void);
 void io_init(void);
@@ -55,7 +64,8 @@ void spi_send_byte(uint8_t byte);
 void gpio_set(uint8_t pin, GPIO_TypeDef* port);
 void gpio_clear(uint8_t pin, GPIO_TypeDef* port);
 void spi_send_motor_command(uint8_t addr, uint32_t data);
-void motor_write_reg(uint8_t reg, uint32_t command);
+void tcm5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
+uint32_t tcm5041_read_reg(uint8_t reg, uint32_t data, uint8_t *status);
 
 int main(void)
 {
@@ -70,42 +80,45 @@ int main(void)
         debug_usart_print("Hello, World!\n");
 
         GPIOD->MODER = (1 << 24) | (1 << 26) | (1 << 28) | (1 << 30); // set pin 13 to be general purpose output
+        uint8_t status = 0;
 
         for (;;) {
                 GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15); // Toggle the pin
-                motor_write_reg(MOTOR_GCONF_REG, 0x00000008);
+                tcm5041_write_reg(MOTOR_GCONF_REG, 0x00000008, &status);
 
-                motor_write_reg(MOTOR_CHOPCONF_REG_0, 0x000100c5);
-                motor_write_reg(MOTOR_IHOLD_IRUN_REG_0, 0x00011f05);
-                motor_write_reg(MOTOR_TZEROWAIT_REG_0, 0x00002710);
-                motor_write_reg(MOTOR_PWMCONF_REG_0, 0x000401c8);
-                motor_write_reg(MOTOR_VHIGH_REG_0, 0x00061a80);
-                motor_write_reg(MOTOR_VCOOLTHRS_REG_0, 0x00007530);
+                tcm5041_write_reg(MOTOR_GCONF_REG, 0x000100c5, &status);
 
-                motor_write_reg(MOTOR_CHOPCONF_REG_1, 0x000100c5);
-                motor_write_reg(MOTOR_IHOLD_IRUN_REG_1, 0x00011f05);
-                motor_write_reg(MOTOR_TZEROWAIT_REG_1, 0x00002710);
-                motor_write_reg(MOTOR_PWMCONF_REG_1, 0x000401c8);
-                motor_write_reg(MOTOR_VHIGH_REG_1, 0x00061a80);
-                motor_write_reg(MOTOR_VCOOLTHRS_REG_1, 0x00007530);
+                tcm5041_write_reg(MOTOR_CHOPCONF_REG_0, 0x000100c5, &status);
+                tcm5041_write_reg(MOTOR_IHOLD_IRUN_REG_0, 0x00011f05, &status);
+                tcm5041_write_reg(MOTOR_TZEROWAIT_REG_0, 0x00002710, &status);
+                tcm5041_write_reg(MOTOR_PWMCONF_REG_0, 0x000401c8, &status);
+                tcm5041_write_reg(MOTOR_VHIGH_REG_0, 0x00061a80, &status);
+                tcm5041_write_reg(MOTOR_VCOOLTHRS_REG_0, 0x00007530, &status);
 
-                motor_write_reg(MOTOR_A1_REG_0, 0x000013E8);
-                motor_write_reg(MOTOR_V1_REG_0, 0x0001c350);
-                motor_write_reg(MOTOR_AMAX_REG_0, 0x000011f4);
-                motor_write_reg(MOTOR_VMAX_REG_0, 0x001304d0);
-                motor_write_reg(MOTOR_DMAX_REG_0, 0x000012bc);
-                motor_write_reg(MOTOR_D1_REG_0, 0x00001578);
-                motor_write_reg(MOTOR_VSTOP_REG_0, 0x0000000A);
-                motor_write_reg(MOTOR_RAMPMODE_REG_0, 0x00000000);
+                tcm5041_write_reg(MOTOR_CHOPCONF_REG_1, 0x000100c5, &status);
+                tcm5041_write_reg(MOTOR_IHOLD_IRUN_REG_1, 0x00011f05, &status);
+                tcm5041_write_reg(MOTOR_TZEROWAIT_REG_1, 0x00002710, &status);
+                tcm5041_write_reg(MOTOR_PWMCONF_REG_1, 0x000401c8, &status);
+                tcm5041_write_reg(MOTOR_VHIGH_REG_1, 0x00061a80, &status);
+                tcm5041_write_reg(MOTOR_VCOOLTHRS_REG_1, 0x00007530, &status);
 
-                motor_write_reg(MOTOR_A1_REG_1, 0x000013E8);
-                motor_write_reg(MOTOR_V1_REG_1, 0x0001c350);
-                motor_write_reg(MOTOR_AMAX_REG_1, 0x000011f4);
-                motor_write_reg(MOTOR_VMAX_REG_1, 0x001304d0);
-                motor_write_reg(MOTOR_DMAX_REG_1, 0x000012bc);
-                motor_write_reg(MOTOR_D1_REG_1, 0x00001578);
-                motor_write_reg(MOTOR_VSTOP_REG_1, 0x0000000A);
-                motor_write_reg(MOTOR_RAMPMODE_REG_1, 0x00000000);
+                tcm5041_write_reg(MOTOR_A1_REG_0, 0x000013E8, &status);
+                tcm5041_write_reg(MOTOR_V1_REG_0, 0x0001c350, &status);
+                tcm5041_write_reg(MOTOR_AMAX_REG_0, 0x000011f4, &status);
+                tcm5041_write_reg(MOTOR_VMAX_REG_0, 0x001304d0, &status);
+                tcm5041_write_reg(MOTOR_DMAX_REG_0, 0x000012bc, &status);
+                tcm5041_write_reg(MOTOR_D1_REG_0, 0x00001578, &status);
+                tcm5041_write_reg(MOTOR_VSTOP_REG_0, 0x0000000A, &status);
+                tcm5041_write_reg(MOTOR_RAMPMODE_REG_0, 0x00000000, &status);
+
+                tcm5041_write_reg(MOTOR_A1_REG_1, 0x000013E8, &status);
+                tcm5041_write_reg(MOTOR_V1_REG_1, 0x0001c350, &status);
+                tcm5041_write_reg(MOTOR_AMAX_REG_1, 0x000011f4, &status);
+                tcm5041_write_reg(MOTOR_VMAX_REG_1, 0x001304d0, &status);
+                tcm5041_write_reg(MOTOR_DMAX_REG_1, 0x000012bc, &status);
+                tcm5041_write_reg(MOTOR_D1_REG_1, 0x00001578, &status);
+                tcm5041_write_reg(MOTOR_VSTOP_REG_1, 0x0000000A, &status);
+                tcm5041_write_reg(MOTOR_RAMPMODE_REG_1, 0x00000000, &status);
 
 
                 int32_t location = 0;
@@ -113,27 +126,27 @@ int main(void)
 
                 uint32_t e = 0;
                 while(1) {
-                        motor_write_reg(MOTOR_XTARGET_0, 0+e);
-                        motor_write_reg(MOTOR_XTARGET_1, 0-e);
+                        tcm5041_write_reg(MOTOR_XTARGET_0, 0+e, &status);
+                        tcm5041_write_reg(MOTOR_XTARGET_1, 0-e, &status);
                         for(int i=0; i<50000000; i++) {__asm("nop");}
-                        motor_write_reg(MOTOR_XTARGET_0, 100000-e);
-                        motor_write_reg(MOTOR_XTARGET_1, 0-e);
+                        tcm5041_write_reg(MOTOR_XTARGET_0, 100000-e, &status);
+                        tcm5041_write_reg(MOTOR_XTARGET_1, 0-e, &status);
                         for(int i=0; i<50000000; i++) {__asm("nop");}
-                        motor_write_reg(MOTOR_XTARGET_0, 100000-e);
-                        motor_write_reg(MOTOR_XTARGET_1, 100000+e);
+                        tcm5041_write_reg(MOTOR_XTARGET_0, 100000-e, &status);
+                        tcm5041_write_reg(MOTOR_XTARGET_1, 100000+e, &status);
                         for(int i=0; i<50000000; i++) {__asm("nop");}
-                        motor_write_reg(MOTOR_XTARGET_0, 0+e);
-                        motor_write_reg(MOTOR_XTARGET_1, 100000+e);
+                        tcm5041_write_reg(MOTOR_XTARGET_0, 0+e, &status);
+                        tcm5041_write_reg(MOTOR_XTARGET_1, 100000+e, &status);
                         for(int i=0; i<50000000; i++) {__asm("nop");}
-                        motor_write_reg(MOTOR_XTARGET_0, 0+e);
-                        motor_write_reg(MOTOR_XTARGET_1, 0-e);
+                        tcm5041_write_reg(MOTOR_XTARGET_0, 0+e, &status);
+                        tcm5041_write_reg(MOTOR_XTARGET_1, 0-e, &status);
                         for(int i=0; i<50000000; i++) {__asm("nop");}
                         e += 10000;
                 }
 
                 while(1){
-                        motor_write_reg(MOTOR_XTARGET_0, location);
-                        motor_write_reg(MOTOR_XTARGET_1, location);
+                        tcm5041_write_reg(MOTOR_XTARGET_0, location, &status);
+                        tcm5041_write_reg(MOTOR_XTARGET_1, location, &status);
                         location += diff;
                         if(location < 0) {
                                 diff = 1000;
@@ -153,8 +166,8 @@ void pen_move_to(float x, float y)
         uint32_t A, uint32_t B;
         A = x + y;
         B = x - y;
-        motor_write_reg(MOTOR_XTARGET_0, A);
-        motor_write_reg(MOTOR_XTARGET_1, B);
+        tcm5041_write_reg(MOTOR_XTARGET_0, A);
+        tcm5041_write_reg(MOTOR_XTARGET_1, B);
 }*/
 
 void clock_init(void)
@@ -255,36 +268,85 @@ void spi_send_byte_blocking(uint8_t byte) {
         gpio_set(3, GPIOA);
 }
 
-// TODO: Two while loops are needed to check the BSY flag! 
-void spi_send_motor_command(uint8_t addr, uint32_t data) {
+void tmc5041_spi_transfer(struct tmc5041_command *command,
+                          struct tmc5041_reply   *reply
+                          )
+{
+        // Dummy read to clear RX buff
+        uint8_t dummy = SPI1->DR;
+
+        // Set nSS low (SPI active)
         gpio_clear(4, GPIOA);
+
+        // Wait for SPI1 to become available
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        SPI1->DR = addr;
+
+        // Transfer first bit
+        SPI1->DR = command->reg;
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        uint8_t status = SPI1->DR;
-        SPI1->DR = ((data & 0xff000000) >> 24);
+        // Wait for RX data and read
+        while(!(SPI1->SR & SPI_SR_RXNE)) {__asm("nop");}
+        reply->status = SPI1->DR;
+
+        // Exchange data[31:24]
+        SPI1->DR = ((command->data & 0xff000000) >> 24);
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        SPI1->DR = ((data & 0x00ff0000) >> 16);
+        // Wait for RX data and read
+        while(!(SPI1->SR & SPI_SR_RXNE)) {__asm("nop");}
+        reply->data = ((uint32_t)SPI1->DR) << 24;
+
+        // Exchange data[23:16]
+        SPI1->DR = ((command->data & 0x00ff0000) >> 16);
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        SPI1->DR = ((data & 0x0000ff00) >> 8);
+        // Wait for RX data and read
+        while(!(SPI1->SR & SPI_SR_RXNE)) {__asm("nop");}
+        reply->data |= ((uint32_t)SPI1->DR) << 16;
+
+        // Exchange data[15:8]
+        SPI1->DR = ((command->data & 0x0000ff00) >> 8);
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        SPI1->DR = ((data & 0x000000ff) >> 0);
+        // Wait for RX data and read
+        while(!(SPI1->SR & SPI_SR_RXNE)) {__asm("nop");}
+        reply->data |= ((uint32_t)SPI1->DR) << 8;
+
+        // Exchange data[7:0]
+        SPI1->DR = ((command->data & 0x000000ff) >> 0);
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
         while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
+        // Wait for RX data and read
+        while(!(SPI1->SR & SPI_SR_RXNE)) {__asm("nop");}
+        reply->status |= (uint32_t)SPI1->DR;
+
+        // Set nSS high (SPI inactive)
         gpio_set(4, GPIOA);
 }
 
-void motor_write_reg(uint8_t reg, uint32_t command) {
-      spi_send_motor_command(reg+0x80, command);  
+void tcm5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status) {
+        struct tmc5041_command command = {
+                .reg = reg + 0x80,
+                .data    = data
+        };
+        struct tmc5041_reply dummy;
+        tmc5041_spi_transfer(&command, &dummy);
+        *status = dummy.status;
 }
 
-void motor_read_reg(uint8_t reg, uint32_t command) {
-      spi_send_motor_command(reg, command);  
+uint32_t tcm5041_read_reg(uint8_t reg, uint32_t data, uint8_t *status) {
+        struct tmc5041_command command = {
+                .reg = reg + 0x00,
+                .data    = data
+        };
+        struct tmc5041_reply reply;
+        tmc5041_spi_transfer(&command, &reply);
+        tmc5041_spi_transfer(&command, &reply);
+
+        *status = reply.status;
+        return reply.data;
 }
 
 void usart_init(void)
