@@ -5,46 +5,30 @@
 
 #include "debug_usart.h"
 
+const uint8_t tmc5041_GCONF = 0x00;
+const uint8_t tmc5041_GSTAT = 0x01;
 
-#define MOTOR_GSTAT_REG 0x01
+const uint8_t tmc5041_RAMPMODE[]   = {0x20, 0x40};
 
-#define MOTOR_RAMPMODE_REG_0 0x20
-#define MOTOR_RAMPMODE_REG_1 0x40
+const uint8_t tmc5041_A1[]         = {0x24, 0x44};
+const uint8_t tmc5041_V1[]         = {0x25, 0x45};
+const uint8_t tmc5041_D1[]         = {0x2a, 0x4a};
+const uint8_t tmc5041_AMAX[]       = {0x26, 0x46};
+const uint8_t tmc5041_VMAX[]       = {0x27, 0x47};
+const uint8_t tmc5041_DMAX[]       = {0x28, 0x48};
 
-#define MOTOR_A1_REG_0 0x24
-#define MOTOR_A1_REG_1 0x44
-#define MOTOR_V1_REG_0 0x25
-#define MOTOR_V1_REG_1 0x45
-#define MOTOR_AMAX_REG_0 0x26
-#define MOTOR_AMAX_REG_1 0x46
-#define MOTOR_VMAX_REG_0 0x27
-#define MOTOR_VMAX_REG_1 0x47
-#define MOTOR_DMAX_REG_0 0x28
-#define MOTOR_DMAX_REG_1 0x48
-#define MOTOR_D1_REG_0 0x2a
-#define MOTOR_D1_REG_1 0x4a
-#define MOTOR_VSTOP_REG_0 0x2b
-#define MOTOR_VSTOP_REG_1 0x4b
-#define MOTOR_TZEROWAIT_REG_0 0x2c
-#define MOTOR_TZEROWAIT_REG_1 0x4c
-#define MOTOR_XTARGET_0 0x2d
-#define MOTOR_XTARGET_1 0x4d
+const uint8_t tmc5041_VSTOP[]      = {0x2b, 0x4b};
+const uint8_t tmc5041_TZEROWAIT[]  = {0x2c, 0x4c};
+const uint8_t tmc5041_XTARGET[]    = {0x2d, 0x4d};
 
-#define MOTOR_IHOLD_IRUN_REG_0 0x30
-#define MOTOR_IHOLD_IRUN_REG_1 0x50
-#define MOTOR_VCOOLTHRS_REG_0  0x31
-#define MOTOR_VCOOLTHRS_REG_1  0x51
+const uint8_t tmc5041_IHOLD_IRUN[] = {0x30, 0x50};
+const uint8_t tmc5041_VCOOLTHRS[]  = {0x31, 0x51};
 
-#define MOTOR_VHIGH_REG_0  0x32
-#define MOTOR_VHIGH_REG_1  0x52
+const uint8_t tmc5041_VHIGH[]      = {0x32, 0x52};
 
-#define MOTOR_GCONF_REG 0x00
+const uint8_t tmc5041_CHOPCONF[]   = {0x6c, 0x7c};
+const uint8_t tmc5041_PWMCONF[]    = {0x10, 0x18};
 
-#define MOTOR_CHOPCONF_REG_0 0x6c
-#define MOTOR_CHOPCONF_REG_1 0x7c
-
-#define MOTOR_PWMCONF_REG_0 0x10
-#define MOTOR_PWMCONF_REG_1 0x18
 
 struct tmc5041_command {
         uint8_t  reg;
@@ -56,6 +40,7 @@ struct tmc5041_reply {
         uint32_t data;
 };
 
+
 void clock_init(void);
 void io_init(void);
 void usart_init(void);
@@ -65,8 +50,9 @@ void gpio_set   (uint8_t pin, GPIO_TypeDef* port);
 void gpio_clear (uint8_t pin, GPIO_TypeDef* port);
 void gpio_toggle(uint8_t pin, GPIO_TypeDef* port);
 
-void     tcm5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
-uint32_t tcm5041_read_reg (uint8_t reg, uint32_t data, uint8_t *status);
+void     tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
+uint32_t tmc5041_read_reg (uint8_t reg, uint32_t data, uint8_t *status);
+
 
 int main(void)
 {
@@ -84,69 +70,59 @@ int main(void)
 
         for (;;) {
                 GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15); // Toggle the pin
-                tcm5041_write_reg(MOTOR_GCONF_REG, 0x00000008, &status);
+                tmc5041_write_reg(tmc5041_GCONF, 0x00000008, &status);
 
-                tcm5041_write_reg(MOTOR_GCONF_REG, 0x000100c5, &status);
+                tmc5041_write_reg(tmc5041_GCONF, 0x000100c5, &status);
 
-                tcm5041_write_reg(MOTOR_CHOPCONF_REG_0, 0x000100c5, &status);
-                tcm5041_write_reg(MOTOR_IHOLD_IRUN_REG_0, 0x00011f05, &status);
-                tcm5041_write_reg(MOTOR_TZEROWAIT_REG_0, 0x00002710, &status);
-                tcm5041_write_reg(MOTOR_PWMCONF_REG_0, 0x000401c8, &status);
-                tcm5041_write_reg(MOTOR_VHIGH_REG_0, 0x00061a80, &status);
-                tcm5041_write_reg(MOTOR_VCOOLTHRS_REG_0, 0x00007530, &status);
+                int i;
+                // Initial motor config
+                for (i=0; i<2; i++) {
+                        tmc5041_write_reg(tmc5041_CHOPCONF[i],   0x000100c5, &status);
+                        tmc5041_write_reg(tmc5041_IHOLD_IRUN[i], 0x00011f05, &status);
+                        tmc5041_write_reg(tmc5041_TZEROWAIT[i],  0x00002710, &status);
+                        tmc5041_write_reg(tmc5041_PWMCONF[i],    0x000401c8, &status);
+                        tmc5041_write_reg(tmc5041_VHIGH[i],      0x00061a80, &status);
+                        tmc5041_write_reg(tmc5041_VCOOLTHRS[i],  0x00007530, &status); 
+                }
 
-                tcm5041_write_reg(MOTOR_CHOPCONF_REG_1, 0x000100c5, &status);
-                tcm5041_write_reg(MOTOR_IHOLD_IRUN_REG_1, 0x00011f05, &status);
-                tcm5041_write_reg(MOTOR_TZEROWAIT_REG_1, 0x00002710, &status);
-                tcm5041_write_reg(MOTOR_PWMCONF_REG_1, 0x000401c8, &status);
-                tcm5041_write_reg(MOTOR_VHIGH_REG_1, 0x00061a80, &status);
-                tcm5041_write_reg(MOTOR_VCOOLTHRS_REG_1, 0x00007530, &status);
-
-                tcm5041_write_reg(MOTOR_A1_REG_0, 0x000013E8, &status);
-                tcm5041_write_reg(MOTOR_V1_REG_0, 0x0001c350, &status);
-                tcm5041_write_reg(MOTOR_AMAX_REG_0, 0x000011f4, &status);
-                tcm5041_write_reg(MOTOR_VMAX_REG_0, 0x001304d0, &status);
-                tcm5041_write_reg(MOTOR_DMAX_REG_0, 0x000012bc, &status);
-                tcm5041_write_reg(MOTOR_D1_REG_0, 0x00001578, &status);
-                tcm5041_write_reg(MOTOR_VSTOP_REG_0, 0x0000000A, &status);
-                tcm5041_write_reg(MOTOR_RAMPMODE_REG_0, 0x00000000, &status);
-
-                tcm5041_write_reg(MOTOR_A1_REG_1, 0x000013E8, &status);
-                tcm5041_write_reg(MOTOR_V1_REG_1, 0x0001c350, &status);
-                tcm5041_write_reg(MOTOR_AMAX_REG_1, 0x000011f4, &status);
-                tcm5041_write_reg(MOTOR_VMAX_REG_1, 0x001304d0, &status);
-                tcm5041_write_reg(MOTOR_DMAX_REG_1, 0x000012bc, &status);
-                tcm5041_write_reg(MOTOR_D1_REG_1, 0x00001578, &status);
-                tcm5041_write_reg(MOTOR_VSTOP_REG_1, 0x0000000A, &status);
-                tcm5041_write_reg(MOTOR_RAMPMODE_REG_1, 0x00000000, &status);
-
+                // Motor motion config
+                for (i=0; i<2; i++) {
+                        tmc5041_write_reg(tmc5041_A1[i],         0x000013E8, &status);
+                        tmc5041_write_reg(tmc5041_V1[i],         0x0001c350, &status);
+                        tmc5041_write_reg(tmc5041_AMAX[i],       0x000011f4, &status);
+                        tmc5041_write_reg(tmc5041_VMAX[i],       0x001304d0, &status);
+                        tmc5041_write_reg(tmc5041_DMAX[i],       0x000012bc, &status);
+                        tmc5041_write_reg(tmc5041_D1[i],         0x00001578, &status);
+                        tmc5041_write_reg(tmc5041_VSTOP[i],      0x0000000A, &status);
+                        tmc5041_write_reg(tmc5041_RAMPMODE[i],   0x00000000, &status);
+                }
 
                 int32_t location = 0;
                 int32_t diff = 1000;
 
                 uint32_t e = 0;
                 while(1) {
-                        tcm5041_write_reg(MOTOR_XTARGET_0, 0+e, &status);
-                        tcm5041_write_reg(MOTOR_XTARGET_1, 0-e, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[0], 0+e, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[1], 0-e, &status);
                         for(int i=0; i<50000000; i++) {__asm("nop");}
-                        tcm5041_write_reg(MOTOR_XTARGET_0, 100000-e, &status);
-                        tcm5041_write_reg(MOTOR_XTARGET_1, 0-e, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[0], 100000-e, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[1], 0-e, &status);
                         for(int i=0; i<50000000; i++) {__asm("nop");}
-                        tcm5041_write_reg(MOTOR_XTARGET_0, 100000-e, &status);
-                        tcm5041_write_reg(MOTOR_XTARGET_1, 100000+e, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[0], 100000-e, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[1], 100000+e, &status);
                         for(int i=0; i<50000000; i++) {__asm("nop");}
-                        tcm5041_write_reg(MOTOR_XTARGET_0, 0+e, &status);
-                        tcm5041_write_reg(MOTOR_XTARGET_1, 100000+e, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[0], 0+e, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[1], 100000+e, &status);
                         for(int i=0; i<50000000; i++) {__asm("nop");}
-                        tcm5041_write_reg(MOTOR_XTARGET_0, 0+e, &status);
-                        tcm5041_write_reg(MOTOR_XTARGET_1, 0-e, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[0], 0+e, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[1], 0-e, &status);
                         for(int i=0; i<50000000; i++) {__asm("nop");}
                         e += 10000;
                 }
 
                 while(1){
-                        tcm5041_write_reg(MOTOR_XTARGET_0, location, &status);
-                        tcm5041_write_reg(MOTOR_XTARGET_1, location, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[0], location, &status);
+                        tmc5041_write_reg(tmc5041_XTARGET[1], location, &status);
                         location += diff;
                         if(location < 0) {
                                 diff = 1000;
@@ -166,8 +142,8 @@ void pen_move_to(float x, float y)
         uint32_t A, uint32_t B;
         A = x + y;
         B = x - y;
-        tcm5041_write_reg(MOTOR_XTARGET_0, A);
-        tcm5041_write_reg(MOTOR_XTARGET_1, B);
+        tmc5041_write_reg(MOTOR_XTARGET_0, A);
+        tmc5041_write_reg(MOTOR_XTARGET_1, B);
 }*/
 
 void clock_init(void)
@@ -317,7 +293,7 @@ void tmc5041_spi_transfer(struct tmc5041_command *command,
         gpio_set(4, GPIOA);
 }
 
-void tcm5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status)
+void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status)
 {
         struct tmc5041_command command = {
                 .reg = reg + 0x80,
@@ -328,7 +304,7 @@ void tcm5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status)
         *status = dummy.status;
 }
 
-uint32_t tcm5041_read_reg(uint8_t reg, uint32_t data, uint8_t *status)
+uint32_t tmc5041_read_reg(uint8_t reg, uint32_t data, uint8_t *status)
 {
         struct tmc5041_command command = {
                 .reg = reg + 0x00,
