@@ -29,6 +29,8 @@ const uint8_t tmc5041_VHIGH[]      = {0x32, 0x52};
 const uint8_t tmc5041_CHOPCONF[]   = {0x6c, 0x7c};
 const uint8_t tmc5041_PWMCONF[]    = {0x10, 0x18};
 
+const uint8_t tmc5041_RAMP_STAT[]  = {0x35, 0x55};
+
 
 struct tmc5041_command {
         uint8_t  reg;
@@ -51,8 +53,10 @@ void gpio_clear (uint8_t pin, GPIO_TypeDef* port);
 void gpio_toggle(uint8_t pin, GPIO_TypeDef* port);
 
 void     tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
-uint32_t tmc5041_read_reg (uint8_t reg, uint32_t data, uint8_t *status);
+uint32_t tmc5041_read_reg (uint8_t reg, uint8_t *status);
 
+void pen_motors_init(void);
+uint8_t pen_goto_motor_rotation(int32_t A, int32_t B);
 
 int main(void)
 {
@@ -66,85 +70,66 @@ int main(void)
         debug_usart_print("Hello, World!\n");
 
         GPIOD->MODER = (1 << 24) | (1 << 26) | (1 << 28) | (1 << 30); // set pin 13 to be general purpose output
-        uint8_t status = 0;
 
-        for (;;) {
-                GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15); // Toggle the pin
-                tmc5041_write_reg(tmc5041_GCONF, 0x00000008, &status);
+        uint8_t status;
 
-                tmc5041_write_reg(tmc5041_GCONF, 0x000100c5, &status);
+        uint32_t e = 0;
+        while(1) {
+                status = pen_goto_motor_rotation(0+e,      0-e);
+                status = pen_goto_motor_rotation(100000-e, 0-e);
+                status = pen_goto_motor_rotation(100000-e, 100000+e);
+                status = pen_goto_motor_rotation(0+e,      0-e);
 
-                int i;
-                // Initial motor config
-                for (i=0; i<2; i++) {
-                        tmc5041_write_reg(tmc5041_CHOPCONF[i],   0x000100c5, &status);
-                        tmc5041_write_reg(tmc5041_IHOLD_IRUN[i], 0x00011f05, &status);
-                        tmc5041_write_reg(tmc5041_TZEROWAIT[i],  0x00002710, &status);
-                        tmc5041_write_reg(tmc5041_PWMCONF[i],    0x000401c8, &status);
-                        tmc5041_write_reg(tmc5041_VHIGH[i],      0x00061a80, &status);
-                        tmc5041_write_reg(tmc5041_VCOOLTHRS[i],  0x00007530, &status); 
-                }
-
-                // Motor motion config
-                for (i=0; i<2; i++) {
-                        tmc5041_write_reg(tmc5041_A1[i],         0x000013E8, &status);
-                        tmc5041_write_reg(tmc5041_V1[i],         0x0001c350, &status);
-                        tmc5041_write_reg(tmc5041_AMAX[i],       0x000011f4, &status);
-                        tmc5041_write_reg(tmc5041_VMAX[i],       0x001304d0, &status);
-                        tmc5041_write_reg(tmc5041_DMAX[i],       0x000012bc, &status);
-                        tmc5041_write_reg(tmc5041_D1[i],         0x00001578, &status);
-                        tmc5041_write_reg(tmc5041_VSTOP[i],      0x0000000A, &status);
-                        tmc5041_write_reg(tmc5041_RAMPMODE[i],   0x00000000, &status);
-                }
-
-                int32_t location = 0;
-                int32_t diff = 1000;
-
-                uint32_t e = 0;
-                while(1) {
-                        tmc5041_write_reg(tmc5041_XTARGET[0], 0+e, &status);
-                        tmc5041_write_reg(tmc5041_XTARGET[1], 0-e, &status);
-                        for(int i=0; i<50000000; i++) {__asm("nop");}
-                        tmc5041_write_reg(tmc5041_XTARGET[0], 100000-e, &status);
-                        tmc5041_write_reg(tmc5041_XTARGET[1], 0-e, &status);
-                        for(int i=0; i<50000000; i++) {__asm("nop");}
-                        tmc5041_write_reg(tmc5041_XTARGET[0], 100000-e, &status);
-                        tmc5041_write_reg(tmc5041_XTARGET[1], 100000+e, &status);
-                        for(int i=0; i<50000000; i++) {__asm("nop");}
-                        tmc5041_write_reg(tmc5041_XTARGET[0], 0+e, &status);
-                        tmc5041_write_reg(tmc5041_XTARGET[1], 100000+e, &status);
-                        for(int i=0; i<50000000; i++) {__asm("nop");}
-                        tmc5041_write_reg(tmc5041_XTARGET[0], 0+e, &status);
-                        tmc5041_write_reg(tmc5041_XTARGET[1], 0-e, &status);
-                        for(int i=0; i<50000000; i++) {__asm("nop");}
-                        e += 10000;
-                }
-
-                while(1){
-                        tmc5041_write_reg(tmc5041_XTARGET[0], location, &status);
-                        tmc5041_write_reg(tmc5041_XTARGET[1], location, &status);
-                        location += diff;
-                        if(location < 0) {
-                                diff = 1000;
-                        }
-                        if(location > 1000000) {
-                                diff = -1000;
-                        }
-                        for(int i=0; i<5000000; i++) {__asm("nop");}
-                        debug_usart_print("H\n");
-
-                }
+                e += 10000;
+                debug_usart_print("aah!\n");
+                // Toggle LEDs
+                GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
         }
 }
-/*
-void pen_move_to(float x, float y)
+
+void pen_motors_init()
 {
-        uint32_t A, uint32_t B;
-        A = x + y;
-        B = x - y;
-        tmc5041_write_reg(MOTOR_XTARGET_0, A);
-        tmc5041_write_reg(MOTOR_XTARGET_1, B);
-}*/
+        int i;
+        uint8_t status;
+        tmc5041_write_reg(tmc5041_GCONF, 0x00000008, &status);
+        tmc5041_write_reg(tmc5041_GCONF, 0x000100c5, &status);
+
+        // Initial motor config
+        for (i=0; i<2; i++) {
+                tmc5041_write_reg(tmc5041_CHOPCONF[i],   0x000100c5, &status);
+                tmc5041_write_reg(tmc5041_IHOLD_IRUN[i], 0x00011f05, &status);
+                tmc5041_write_reg(tmc5041_TZEROWAIT[i],  0x00002710, &status);
+                tmc5041_write_reg(tmc5041_PWMCONF[i],    0x000401c8, &status);
+                tmc5041_write_reg(tmc5041_VHIGH[i],      0x00061a80, &status);
+                tmc5041_write_reg(tmc5041_VCOOLTHRS[i],  0x00007530, &status); 
+        }
+
+        // Motor motion config
+        for (i=0; i<2; i++) {
+                tmc5041_write_reg(tmc5041_A1[i],         0x000013E8, &status);
+                tmc5041_write_reg(tmc5041_V1[i],         0x0001c350, &status);
+                tmc5041_write_reg(tmc5041_AMAX[i],       0x000011f4, &status);
+                tmc5041_write_reg(tmc5041_VMAX[i],       0x001304d0, &status);
+                tmc5041_write_reg(tmc5041_DMAX[i],       0x000012bc, &status);
+                tmc5041_write_reg(tmc5041_D1[i],         0x00001578, &status);
+                tmc5041_write_reg(tmc5041_VSTOP[i],      0x0000000A, &status);
+                tmc5041_write_reg(tmc5041_RAMPMODE[i],   0x00000000, &status);
+        }
+}
+
+uint8_t pen_goto_motor_rotation(int32_t A, int32_t B)
+{
+        uint8_t status;
+        tmc5041_write_reg(tmc5041_XTARGET[0], A, &status);
+        tmc5041_write_reg(tmc5041_XTARGET[1], B, &status);
+
+        // Wait until location is reached
+        while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[0], &status) & (1<<7))) {__asm("nop");}
+        while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[1], &status) & (1<<7))) {__asm("nop");}
+
+        for (int i=0; i<50000000; i++) {__asm("nop");}
+        return status;
+}
 
 void clock_init(void)
 {
@@ -296,19 +281,19 @@ void tmc5041_spi_transfer(struct tmc5041_command *command,
 void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status)
 {
         struct tmc5041_command command = {
-                .reg = reg + 0x80,
-                .data    = data
+                .reg  = reg + 0x80,
+                .data = data
         };
         struct tmc5041_reply dummy;
         tmc5041_spi_transfer(&command, &dummy);
         *status = dummy.status;
 }
 
-uint32_t tmc5041_read_reg(uint8_t reg, uint32_t data, uint8_t *status)
+uint32_t tmc5041_read_reg(uint8_t reg, uint8_t *status)
 {
         struct tmc5041_command command = {
-                .reg = reg + 0x00,
-                .data    = data
+                .reg  = reg,
+                .data = 0x00000000
         };
         struct tmc5041_reply reply;
         tmc5041_spi_transfer(&command, &reply);
