@@ -3,6 +3,8 @@
 #include "stm32f4xx_gpio.h"
 #include "stm32f4xx_usart.h"
 
+#include "arm_math.h"
+
 #include "debug_usart.h"
 
 const uint8_t tmc5041_GCONF = 0x00;
@@ -87,6 +89,39 @@ int main(void)
                 debug_usart_print("aah!\n");
                 // Toggle LEDs
                 GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
+        }
+}
+
+void flower_demo()
+{
+        int i = 0;
+        int i_MAX = 18;
+        
+        float32_t sin_val, cos_val;
+        float32_t theta = 0;
+        // theta
+        float32_t theta_step = 0.349066; // 2pi/18
+        float32_t amplitude  = 50000;
+        float32_t A, B;
+        int32_t rotA, rotB;
+
+        for (i=0; i<i_MAX; i++) {
+                sin_val = arm_sin_f32(theta);
+                cos_val = arm_cos_f32(theta);
+
+                arm_mult_f32(&sin_val, &amplitude, &A, 1);
+                arm_mult_f32(&cos_val, &amplitude, &B, 1);
+
+                rotA = (int32_t) A;
+                rotA = (int32_t) B;
+
+                pen_goto_motor_rotation(A, B);
+                pen_goto_motor_rotation(B, -1*A);
+                pen_goto_motor_rotation(-1*A, -1*B);
+                pen_goto_motor_rotation(-1*B, A);
+                pen_goto_motor_rotation(A, B);
+
+                arm_add_f32(&theta, &theta_step, &theta, 1);
         }
 }
 

@@ -18,6 +18,7 @@ OBJCOPY=arm-none-eabi-objcopy
 
 CFLAGS  = -g -O2 -Wall -T../../common/stm32_flash.ld 
 CFLAGS += -DUSE_STDPERIPH_DRIVER
+CFLAGS += -DARM_MATH_CM4
 CFLAGS += -mlittle-endian -mthumb -mcpu=cortex-m4 -mthumb-interwork
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 CFLAGS += -I../../common/include
@@ -28,6 +29,12 @@ CFLAGS += -I$(STM_COMMON)/Utilities/STM32F4-Discovery
 CFLAGS += -I$(STM_COMMON)/Libraries/CMSIS/Include
 CFLAGS += -I$(STM_COMMON)/Libraries/CMSIS/ST/STM32F4xx/Include
 CFLAGS += -I$(STM_COMMON)/Libraries/STM32F4xx_StdPeriph_Driver/inc
+
+# Add CMSIS maths functions
+SRCS += $(STM_COMMON)/Libraries/CMSIS/DSP_Lib/Source/FastMathFunctions/arm_cos_f32.c
+SRCS += $(STM_COMMON)/Libraries/CMSIS/DSP_Lib/Source/FastMathFunctions/arm_sin_f32.c
+SRCS += $(STM_COMMON)/Libraries/CMSIS/DSP_Lib/Source/BasicMathFunctions/arm_add_f32.c
+SRCS += $(STM_COMMON)/Libraries/CMSIS/DSP_Lib/Source/BasicMathFunctions/arm_mult_f32.c
 
 # add startup file to build
 SRCS += $(STM_COMMON)/Libraries/CMSIS/ST/STM32F4xx/Source/Templates/TrueSTUDIO/startup_stm32f4xx.s 
