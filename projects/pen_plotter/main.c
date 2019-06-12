@@ -60,12 +60,13 @@ void clock_init(void);
 void io_init(void);
 void usart_init(void);
 void spi_init(void);
-void spi_send_byte(uint8_t byte);
-void gpio_set(uint8_t pin, GPIO_TypeDef* port);
-void gpio_clear(uint8_t pin, GPIO_TypeDef* port);
-void spi_send_motor_command(uint8_t addr, uint32_t data);
-void tcm5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
-uint32_t tcm5041_read_reg(uint8_t reg, uint32_t data, uint8_t *status);
+
+void gpio_set   (uint8_t pin, GPIO_TypeDef* port);
+void gpio_clear (uint8_t pin, GPIO_TypeDef* port);
+void gpio_toggle(uint8_t pin, GPIO_TypeDef* port);
+
+void     tcm5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
+uint32_t tcm5041_read_reg (uint8_t reg, uint32_t data, uint8_t *status);
 
 int main(void)
 {
@@ -74,7 +75,6 @@ int main(void)
         spi_init();
         usart_init();
         debug_usart_bind(USART1);
-
 
         // Send "Hello, World!" to PC
         debug_usart_print("Hello, World!\n");
@@ -172,6 +172,8 @@ void pen_move_to(float x, float y)
 
 void clock_init(void)
 {
+        // Enable clock for GPIOA
+        RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
         // Enable clock for GPIOB
         RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
         // Enable clock for GPIOD (for orange LED)
@@ -196,13 +198,6 @@ void io_init(void)
         GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
         GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-        RCC->AHB1ENR |= (
-                RCC_AHB1ENR_GPIOAEN |  // enable the clock to GPIOA
-                RCC_AHB1ENR_GPIODEN    // enable the clock to GPIOD
-        );
-        __asm("dsb");  // stall instruction pipeline, until instruction completes, as
-                       // per Errata 2.1.13, "Delay after an RCC peripheral clock enabling"
-
         GPIOA->MODER |= (
                 GPIO_MODER_MODER3_0 |  // PA3 to generic output (software nSS0)
                 GPIO_MODER_MODER4_0 |  // PA4 to generic output (software nSS1)
@@ -226,19 +221,23 @@ void io_init(void)
         GPIOA->AFR[0] = 0x55500000; // Set PA5/6/7 to alternative function 5
 }
 
-void gpio_set(uint8_t pin, GPIO_TypeDef* port) {
+void gpio_set(uint8_t pin, GPIO_TypeDef* port)
+{
         port->ODR |= (1<<pin);
 }
 
-void gpio_clear(uint8_t pin, GPIO_TypeDef* port) {
+void gpio_clear(uint8_t pin, GPIO_TypeDef* port)
+{
         port->ODR &= ~(1<<pin);
 }
 
-void gpio_toggle(uint8_t pin, GPIO_TypeDef* port) {
+void gpio_toggle(uint8_t pin, GPIO_TypeDef* port)
+{
         port->ODR ^= (1<<pin);
 }
 
-void spi_init(void) {
+void spi_init(void)
+{
         // TODO: Need to configure APB2 first
         RCC->APB2ENR |= RCC_APB2RSTR_SPI1RST; // Enable the clock to SPI1
         __asm("dsb");  // stall instruction pipeline, until instruction completes, as
@@ -258,14 +257,6 @@ void spi_init(void) {
 
         // Enable SPI1
         SPI1->CR1 |= SPI_CR1_SPE;
-}
-
-void spi_send_byte_blocking(uint8_t byte) {
-        gpio_clear(3, GPIOA);
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        SPI1->DR = byte;
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        gpio_set(3, GPIOA);
 }
 
 void tmc5041_spi_transfer(struct tmc5041_command *command,
@@ -326,7 +317,8 @@ void tmc5041_spi_transfer(struct tmc5041_command *command,
         gpio_set(4, GPIOA);
 }
 
-void tcm5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status) {
+void tcm5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status)
+{
         struct tmc5041_command command = {
                 .reg = reg + 0x80,
                 .data    = data
@@ -336,7 +328,8 @@ void tcm5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status) {
         *status = dummy.status;
 }
 
-uint32_t tcm5041_read_reg(uint8_t reg, uint32_t data, uint8_t *status) {
+uint32_t tcm5041_read_reg(uint8_t reg, uint32_t data, uint8_t *status)
+{
         struct tmc5041_command command = {
                 .reg = reg + 0x00,
                 .data    = data
