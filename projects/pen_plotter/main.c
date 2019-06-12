@@ -11,6 +11,7 @@ const uint8_t tmc5041_GCONF = 0x00;
 const uint8_t tmc5041_GSTAT = 0x01;
 
 const uint8_t tmc5041_RAMPMODE[]   = {0x20, 0x40};
+const uint8_t tmc5041_XACTUAL[]    = {0x21, 0x41};
 
 const uint8_t tmc5041_A1[]         = {0x24, 0x44};
 const uint8_t tmc5041_V1[]         = {0x25, 0x45};
@@ -57,8 +58,15 @@ void gpio_toggle(uint8_t pin, GPIO_TypeDef* port);
 void     tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
 uint32_t tmc5041_read_reg (uint8_t reg, uint8_t *status);
 
+int32_t int_abs(int32_t a);
+
 void pen_motors_init(void);
+void pen_set_motor_max_speed(int motor);
+void pen_set_motor_rel_speed(int motor, float32_t scale);
 uint8_t pen_goto_motor_rotation(int32_t A, int32_t B);
+
+void flower_demo();
+void circle_demo();
 
 int main(void)
 {
@@ -79,11 +87,7 @@ int main(void)
 
         uint32_t e = 0;
         while(1) {
-                status = pen_goto_motor_rotation(0,      0);
-                status = pen_goto_motor_rotation(100000, 0);
-                status = pen_goto_motor_rotation(100000, 100000);
-                status = pen_goto_motor_rotation(0, 100000);
-                status = pen_goto_motor_rotation(0,      0);
+                flower_demo();
 
                 e += 10000;
                 debug_usart_print("aah!\n");
@@ -125,6 +129,35 @@ void flower_demo()
         }
 }
 
+void circle_demo()
+{
+        int i = 0;
+        int i_MAX = 18;
+        
+        float32_t sin_val, cos_val;
+        float32_t theta = 0;
+        // theta
+        float32_t theta_step = 0.349066; // 2pi/18
+        float32_t amplitude  = 50000;
+        float32_t A, B;
+        int32_t rotA, rotB;
+
+        for (i=0; i<i_MAX; i++) {
+                sin_val = arm_sin_f32(theta);
+                cos_val = arm_cos_f32(theta);
+
+                arm_mult_f32(&sin_val, &amplitude, &A, 1);
+                arm_mult_f32(&cos_val, &amplitude, &B, 1);
+
+                rotA = (int32_t) A;
+                rotA = (int32_t) B;
+
+                pen_goto_motor_rotation(A, B);
+
+                arm_add_f32(&theta, &theta_step, &theta, 1);
+        }
+}
+
 void pen_motors_init()
 {
         int i;
@@ -143,29 +176,78 @@ void pen_motors_init()
 
         // Motor motion config
         for (i=0; i<2; i++) {
-                tmc5041_write_reg(tmc5041_A1[i],         0x000013E8, &status);
-                tmc5041_write_reg(tmc5041_V1[i],         0x0001c350, &status);
-                tmc5041_write_reg(tmc5041_AMAX[i],       0x000011f4, &status);
-                tmc5041_write_reg(tmc5041_VMAX[i],       0x001304d0, &status);
-                tmc5041_write_reg(tmc5041_DMAX[i],       0x000012bc, &status);
-                tmc5041_write_reg(tmc5041_D1[i],         0x00001578, &status);
-                tmc5041_write_reg(tmc5041_VSTOP[i],      0x0000000A, &status);
-                tmc5041_write_reg(tmc5041_RAMPMODE[i],   0x00000000, &status);
+                pen_set_motor_max_speed(i);
         }
+}
+
+void pen_set_motor_max_speed(int motor)
+{
+        uint8_t status;
+        tmc5041_write_reg(tmc5041_A1[motor],         0x000013E8, &status);
+        tmc5041_write_reg(tmc5041_V1[motor],         0x0001c350, &status);
+        tmc5041_write_reg(tmc5041_AMAX[motor],       0x000011f4, &status);
+        tmc5041_write_reg(tmc5041_VMAX[motor],       0x001304d0, &status);
+        tmc5041_write_reg(tmc5041_DMAX[motor],       0x000012bc, &status);
+        tmc5041_write_reg(tmc5041_D1[motor],         0x00001578, &status);
+        tmc5041_write_reg(tmc5041_VSTOP[motor],      0x0000000A, &status);
+        tmc5041_write_reg(tmc5041_RAMPMODE[motor],   0x00000000, &status);      
+}
+
+void pen_set_motor_rel_speed(int motor, float32_t scale)
+{
+        int32_t val;
+        uint8_t status;
+        val = scale * 0x000013E8;
+        tmc5041_write_reg(tmc5041_A1[motor],    val, &status);
+        val = scale * 0x0001c350;
+        tmc5041_write_reg(tmc5041_V1[motor],    val, &status);
+        val = scale * 0x000011f4;
+        tmc5041_write_reg(tmc5041_AMAX[motor],  val, &status);
+        val = scale * 0x001304d0;
+        tmc5041_write_reg(tmc5041_VMAX[motor],  val, &status);
+        val = scale * 0x000012bc;
+        tmc5041_write_reg(tmc5041_DMAX[motor],  val, &status);
+        val = scale * 0x00001578;
+        tmc5041_write_reg(tmc5041_D1[motor],    val, &status);
+        val = scale * 0x0000000A;
+        tmc5041_write_reg(tmc5041_VSTOP[motor], val, &status);
+}
+
+int32_t int_abs(int32_t a)
+{
+        if (a > 0) {
+                return a;
+        }
+        return -1*a;
 }
 
 uint8_t pen_goto_motor_rotation(int32_t A, int32_t B)
 {
         uint8_t status;
+
+        int32_t A0 = tmc5041_read_reg(tmc5041_XACTUAL[0], &status);
+        int32_t B0 = tmc5041_read_reg(tmc5041_XACTUAL[1], &status);
+
+        int32_t distA = int_abs(A - A0);
+        int32_t distB = int_abs(B - B0);
+
+        if (distA >= distB) {
+                pen_set_motor_max_speed(0);
+                pen_set_motor_rel_speed(1, (float32_t)distB/distA);
+        } else {
+                pen_set_motor_max_speed(1);
+                pen_set_motor_rel_speed(0, (float32_t)distA/distB);
+        }
+
         tmc5041_write_reg(tmc5041_XTARGET[0], A, &status);
         tmc5041_write_reg(tmc5041_XTARGET[1], B, &status);
 
         // Wait until location is reached
         // TODO: Add timeout
-        while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[0], &status) & (1<<9))) {__asm("nop");}
-        while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[1], &status) & (1<<9))) {__asm("nop");}
+        //while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[0], &status) & (1<<9))) {__asm("nop");}
+        //while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[1], &status) & (1<<9))) {__asm("nop");}
 
-        //for (int i=0; i<50000000; i++) {__asm("nop");}
+        for (int i=0; i<50000000; i++) {__asm("nop");}
 
         return status;
 }
