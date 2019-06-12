@@ -77,10 +77,11 @@ int main(void)
 
         uint32_t e = 0;
         while(1) {
-                status = pen_goto_motor_rotation(0+e,      0-e);
-                status = pen_goto_motor_rotation(100000-e, 0-e);
-                status = pen_goto_motor_rotation(100000-e, 100000+e);
-                status = pen_goto_motor_rotation(0+e,      0-e);
+                status = pen_goto_motor_rotation(0,      0);
+                status = pen_goto_motor_rotation(100000, 0);
+                status = pen_goto_motor_rotation(100000, 100000);
+                status = pen_goto_motor_rotation(0, 100000);
+                status = pen_goto_motor_rotation(0,      0);
 
                 e += 10000;
                 debug_usart_print("aah!\n");
@@ -94,7 +95,6 @@ void pen_motors_init()
         int i;
         uint8_t status;
         tmc5041_write_reg(tmc5041_GCONF, 0x00000008, &status);
-        tmc5041_write_reg(tmc5041_GCONF, 0x000100c5, &status);
 
         // Initial motor config
         for (i=0; i<2; i++) {
@@ -129,6 +129,8 @@ uint8_t pen_goto_motor_rotation(int32_t A, int32_t B)
         // TODO: Add timeout
         while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[0], &status) & (1<<9))) {__asm("nop");}
         while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[1], &status) & (1<<9))) {__asm("nop");}
+
+        //for (int i=0; i<50000000; i++) {__asm("nop");}
 
         return status;
 }
