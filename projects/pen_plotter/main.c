@@ -66,6 +66,8 @@ int main(void)
         usart_init();
         debug_usart_bind(USART1);
 
+        pen_motors_init();
+
         // Send "Hello, World!" to PC
         debug_usart_print("Hello, World!\n");
 
@@ -124,10 +126,10 @@ uint8_t pen_goto_motor_rotation(int32_t A, int32_t B)
         tmc5041_write_reg(tmc5041_XTARGET[1], B, &status);
 
         // Wait until location is reached
-        while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[0], &status) & (1<<7))) {__asm("nop");}
-        while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[1], &status) & (1<<7))) {__asm("nop");}
+        // TODO: Add timeout
+        while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[0], &status) & (1<<9))) {__asm("nop");}
+        while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[1], &status) & (1<<9))) {__asm("nop");}
 
-        for (int i=0; i<50000000; i++) {__asm("nop");}
         return status;
 }
 
