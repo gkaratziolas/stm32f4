@@ -7,6 +7,15 @@
 
 #include "debug_usart.h"
 
+#define MAX_A1         0x000013E8
+#define MAX_V1         0x0001c350
+#define MAX_AMAX       0x000011f4
+#define MAX_VMAX       0x001304d0
+#define MAX_DMAX       0x000012bc
+#define MAX_D1         0x00001578
+#define MAX_VSTOP      0x0000000A
+#define MAX_RAMPMODE   0x00000000
+
 const uint8_t tmc5041_GCONF = 0x00;
 const uint8_t tmc5041_GSTAT = 0x01;
 
@@ -183,33 +192,38 @@ void pen_motors_init()
 void pen_set_motor_max_speed(int motor)
 {
         uint8_t status;
-        tmc5041_write_reg(tmc5041_A1[motor],         0x000013E8, &status);
-        tmc5041_write_reg(tmc5041_V1[motor],         0x0001c350, &status);
-        tmc5041_write_reg(tmc5041_AMAX[motor],       0x000011f4, &status);
-        tmc5041_write_reg(tmc5041_VMAX[motor],       0x001304d0, &status);
-        tmc5041_write_reg(tmc5041_DMAX[motor],       0x000012bc, &status);
-        tmc5041_write_reg(tmc5041_D1[motor],         0x00001578, &status);
-        tmc5041_write_reg(tmc5041_VSTOP[motor],      0x0000000A, &status);
-        tmc5041_write_reg(tmc5041_RAMPMODE[motor],   0x00000000, &status);      
+        tmc5041_write_reg(tmc5041_A1[motor],       MAX_A1,       &status);
+        tmc5041_write_reg(tmc5041_V1[motor],       MAX_V1,       &status);
+        tmc5041_write_reg(tmc5041_AMAX[motor],     MAX_AMAX,     &status);
+        tmc5041_write_reg(tmc5041_VMAX[motor],     MAX_VMAX,     &status);
+        tmc5041_write_reg(tmc5041_DMAX[motor],     MAX_DMAX,     &status);
+        tmc5041_write_reg(tmc5041_D1[motor],       MAX_D1,       &status);
+        tmc5041_write_reg(tmc5041_VSTOP[motor],    MAX_VSTOP,    &status);
+        tmc5041_write_reg(tmc5041_RAMPMODE[motor], MAX_RAMPMODE, &status);      
 }
 
 void pen_set_motor_rel_speed(int motor, float32_t scale)
 {
         int32_t val;
         uint8_t status;
-        val = scale * 0x000013E8;
+
+        if (scale > 1) {
+                scale = 1;
+        }
+
+        val = scale * MAX_A1;
         tmc5041_write_reg(tmc5041_A1[motor],    val, &status);
-        val = scale * 0x0001c350;
+        val = scale * MAX_V1;
         tmc5041_write_reg(tmc5041_V1[motor],    val, &status);
-        val = scale * 0x000011f4;
+        val = scale * MAX_AMAX;
         tmc5041_write_reg(tmc5041_AMAX[motor],  val, &status);
-        val = scale * 0x001304d0;
+        val = scale * MAX_VMAX;
         tmc5041_write_reg(tmc5041_VMAX[motor],  val, &status);
-        val = scale * 0x000012bc;
+        val = scale * MAX_DMAX;
         tmc5041_write_reg(tmc5041_DMAX[motor],  val, &status);
-        val = scale * 0x00001578;
+        val = scale * MAX_D1;
         tmc5041_write_reg(tmc5041_D1[motor],    val, &status);
-        val = scale * 0x0000000A;
+        val = scale * MAX_VSTOP;
         tmc5041_write_reg(tmc5041_VSTOP[motor], val, &status);
 }
 
