@@ -75,7 +75,7 @@ void pen_set_motor_rel_speed(int motor, float32_t scale);
 uint8_t pen_goto_motor_rotation(int32_t A, int32_t B);
 
 void flower_demo();
-void circle_demo();
+void polygon_demo(uint32_t edges);
 
 int main(void)
 {
@@ -92,13 +92,11 @@ int main(void)
 
         GPIOD->MODER = (1 << 24) | (1 << 26) | (1 << 28) | (1 << 30); // set pin 13 to be general purpose output
 
-        uint8_t status;
-
-        uint32_t e = 0;
+        uint32_t edges = 3;
         while(1) {
-                flower_demo();
+                polygon_demo(edges);
+                edges++;
 
-                e += 10000;
                 debug_usart_print("aah!\n");
                 // Toggle LEDs
                 GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
@@ -126,32 +124,31 @@ void flower_demo()
                 arm_mult_f32(&cos_val, &amplitude, &B, 1);
 
                 rotA = (int32_t) A;
-                rotA = (int32_t) B;
+                rotB = (int32_t) B;
 
-                pen_goto_motor_rotation(A, B);
-                pen_goto_motor_rotation(B, -1*A);
-                pen_goto_motor_rotation(-1*A, -1*B);
-                pen_goto_motor_rotation(-1*B, A);
-                pen_goto_motor_rotation(A, B);
+                pen_goto_motor_rotation(rotA, rotB);
+                pen_goto_motor_rotation(rotB, -1*rotA);
+                pen_goto_motor_rotation(-1*rotA, -1*rotB);
+                pen_goto_motor_rotation(-1*rotB, rotA);
+                pen_goto_motor_rotation(rotA, rotB);
 
                 arm_add_f32(&theta, &theta_step, &theta, 1);
         }
 }
 
-void circle_demo()
+void polygon_demo(uint32_t edges)
 {
         int i = 0;
-        int i_MAX = 18;
         
         float32_t sin_val, cos_val;
         float32_t theta = 0;
         // theta
-        float32_t theta_step = 0.349066; // 2pi/18
+        float32_t theta_step = 6.28318531 / edges; // 2pi/edges
         float32_t amplitude  = 50000;
         float32_t A, B;
         int32_t rotA, rotB;
 
-        for (i=0; i<i_MAX; i++) {
+        for (i=0; i<edges; i++) {
                 sin_val = arm_sin_f32(theta);
                 cos_val = arm_cos_f32(theta);
 
@@ -159,9 +156,9 @@ void circle_demo()
                 arm_mult_f32(&cos_val, &amplitude, &B, 1);
 
                 rotA = (int32_t) A;
-                rotA = (int32_t) B;
+                rotB = (int32_t) B;
 
-                pen_goto_motor_rotation(A, B);
+                pen_goto_motor_rotation(rotA, rotB);
 
                 arm_add_f32(&theta, &theta_step, &theta, 1);
         }

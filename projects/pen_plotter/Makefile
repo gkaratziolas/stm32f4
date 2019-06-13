@@ -19,6 +19,7 @@ OBJCOPY=arm-none-eabi-objcopy
 CFLAGS  = -g -O2 -Wall -T../../common/stm32_flash.ld 
 CFLAGS += -DUSE_STDPERIPH_DRIVER
 CFLAGS += -DARM_MATH_CM4
+CFLAGS += -D__FPU_PRESENT
 CFLAGS += -mlittle-endian -mthumb -mcpu=cortex-m4 -mthumb-interwork
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 CFLAGS += -I../../common/include
