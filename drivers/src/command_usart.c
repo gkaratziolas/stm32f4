@@ -1,8 +1,6 @@
 #include "stm32f4xx_usart.h"
 #include "command_usart.h"
 
-#define MAX_DATA_LENGTH 255
-
 const uint8_t STARTA = 0x12;
 const uint8_t STARTB = 0x34;
 
@@ -20,6 +18,19 @@ static enum {
 
 static struct command_packet rx_command_packet;
 
+/*
+ * A command USART transaction should consist of the following steps:
+ *    1) STARTA      byte
+ *    2) STARTB      byte
+ *    3) COMMAND     byte
+ *    4) DATA_LENGTH byte
+ *    5) DATA        byte * DATA_LENGTH
+ *    6) CRC         byte
+ * 
+ * Command will be ignored if either STARTA or STARTB are ignored.
+ * CRC is computed against entire preceding message including STARTA and STARTB.
+ * CRC needs to be checked where used. This driver doesn't check it.  
+ */
 void irq()
 {
         // TODO: Check if data available
@@ -76,7 +87,7 @@ void irq()
  * If a packet is available, copy the packet into a passed-in struct and return
  * true. Else return false.
  */
-bool read_command_buffer(struct command_packet *packet_copy)
+bool command_usart_receive(struct command_packet *packet_copy)
 {
         if (rx_buffer_empty) {
                 return false;
@@ -98,7 +109,20 @@ bool read_command_buffer(struct command_packet *packet_copy)
         return true;
 }
 
-bool check_packet_dropped(void)
+bool command_usart_transmit(struct command_packet *tx_packet)
+{
+        USART_TransmitData(STARTA);
+        USART_TransmitData(STARTB);
+        USART_TransmitData(tx_packet->command);
+        USART_TransmitData(tx_packet->data_length);
+        for (i=0; i<tx_packet->data_length; i++) {
+                USART_TransmitData(tx_packet->data[i]);
+        }
+        USART_TransmitData(tx_packet->crc);
+        return true
+}
+
+bool command_usart_check_packet_dropped(void)
 {
         if (rx_command_dropped) {
                 rx_command_dropped = false;
@@ -106,3 +130,4 @@ bool check_packet_dropped(void)
         }
         return false;
 }
+
