@@ -132,7 +132,7 @@ void circle_test()
                 debug_usart_print(print_buf);
                 theta += theta_step;
                 count++;
-                for (i=0; i<200000; i++) {
+                for (i=0; i<100000; i++) {
                         __asm("nop");
                 }
         }
@@ -262,15 +262,16 @@ void pen_set_xy_rel_speed(float32_t x_speed, float32_t y_speed)
                 y_speed = -1 * y_speed;
         }
         
-        int32_t scale = 20;
+        float32_t scale = 0.07;
         val = x_speed * MAX_VMAX * scale;
         tmc5041_write_reg(tmc5041_VMAX[0], val, &status);
         val = y_speed * MAX_VMAX * scale;
         tmc5041_write_reg(tmc5041_VMAX[1], val, &status);
-        val = x_speed * MAX_AMAX * scale;
-        tmc5041_write_reg(tmc5041_VMAX[0], val, &status);
-        val = y_speed * MAX_AMAX * scale;
-        tmc5041_write_reg(tmc5041_VMAX[1], val, &status);
+
+        //val = x_speed * MAX_AMAX;
+        //tmc5041_write_reg(tmc5041_AMAX[0], val, &status);
+        //val = y_speed * MAX_AMAX;
+        //tmc5041_write_reg(tmc5041_AMAX[1], val, &status);
 
 
 }
