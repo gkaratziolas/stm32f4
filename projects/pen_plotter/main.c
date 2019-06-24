@@ -9,14 +9,18 @@
 
 #include "debug_usart.h"
 
-#define MAX_A1         0x000013E8
-#define MAX_V1         0x0001c350
-#define MAX_AMAX       0x000011f4
-#define MAX_VMAX       0x001304d0
-#define MAX_DMAX       0x000012bc
-#define MAX_D1         0x00001578
-#define MAX_VSTOP      0x0000000A
-#define MAX_RAMPMODE   0x00000000
+#define MAX_A1            0x000013E8
+#define MAX_V1            0x0001c350
+#define MAX_AMAX          0x000011f4
+#define MAX_VMAX          0x001304d0
+#define MAX_DMAX          0x000012bc
+#define MAX_D1            0x00001578
+#define MAX_VSTOP         0x0000000A
+
+#define RAMPMODE_POSITION 0x00000000
+#define RAMPMODE_VPOS     0x00000001
+#define RAMPMODE_VNEG     0x00000002
+#define RAMPMODE_HOLD     0x00000003
 
 const uint8_t tmc5041_GCONF = 0x00;
 const uint8_t tmc5041_GSTAT = 0x01;
@@ -75,8 +79,10 @@ void pen_motors_init(void);
 void pen_set_motor_max_speed(int motor);
 void pen_set_motor_rel_speed(int motor, float32_t scale);
 uint8_t pen_goto_motor_rotation(int32_t A, int32_t B);
+void pen_set_xy_rel_speed(float32_t x_speed, float32_t y_speed);
 
 void flower_demo();
+void circle_test();
 void polygon_demo(uint32_t edges);
 
 int main(void)
@@ -96,12 +102,39 @@ int main(void)
 
         uint32_t edges = 3;
         while(1) {
-                polygon_demo(edges);
-                edges++;
+                circle_test();
 
                 debug_usart_print("aah!\n");
                 // Toggle LEDs
                 GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
+        }
+}
+
+void circle_test()
+{
+        float32_t sin_val, cos_val, x_speed, y_speed;
+        uint8_t status;
+        int i;
+        char print_buf[32];
+        float32_t theta = 0;
+        float32_t theta_step = 0.01;
+        int count = 0;
+
+        while (1) {
+                sin_val = arm_sin_f32(theta);
+                cos_val = arm_cos_f32(theta);
+                
+                x_speed = sin_val;
+                y_speed = -1*cos_val;
+                pen_set_xy_rel_speed(x_speed, y_speed);
+                
+                sprintf(print_buf, "count: %d\n", count);
+                debug_usart_print(print_buf);
+                theta += theta_step;
+                count++;
+                for (i=0; i<200000; i++) {
+                        __asm("nop");
+                }
         }
 }
 
@@ -198,7 +231,48 @@ void pen_set_motor_max_speed(int motor)
         tmc5041_write_reg(tmc5041_DMAX[motor],     MAX_DMAX,     &status);
         tmc5041_write_reg(tmc5041_D1[motor],       MAX_D1,       &status);
         tmc5041_write_reg(tmc5041_VSTOP[motor],    MAX_VSTOP,    &status);
-        tmc5041_write_reg(tmc5041_RAMPMODE[motor], MAX_RAMPMODE, &status);      
+        tmc5041_write_reg(tmc5041_RAMPMODE[motor], RAMPMODE_POSITION, &status);      
+}
+
+void pen_set_xy_rel_speed(float32_t x_speed, float32_t y_speed)
+{
+        uint32_t x_vel, x_acc, y_vel, y_acc, val;
+        uint8_t status;
+
+        if (x_speed > 1)
+                x_speed = 1;
+        if (x_speed < -1)
+                x_speed = -1;
+        if (y_speed > 1)
+                y_speed = 1;
+        if (y_speed < -1)
+                y_speed = -1;
+
+        if (x_speed >= 0) {
+                tmc5041_write_reg(tmc5041_RAMPMODE[0], RAMPMODE_VPOS, &status);
+        } else {
+                tmc5041_write_reg(tmc5041_RAMPMODE[0], RAMPMODE_VNEG, &status);
+                x_speed = -1 * x_speed;
+        }
+
+        if (y_speed >= 0) {
+                tmc5041_write_reg(tmc5041_RAMPMODE[1], RAMPMODE_VPOS, &status);
+        } else {
+                tmc5041_write_reg(tmc5041_RAMPMODE[1], RAMPMODE_VNEG, &status);
+                y_speed = -1 * y_speed;
+        }
+        
+        int32_t scale = 20;
+        val = x_speed * MAX_VMAX * scale;
+        tmc5041_write_reg(tmc5041_VMAX[0], val, &status);
+        val = y_speed * MAX_VMAX * scale;
+        tmc5041_write_reg(tmc5041_VMAX[1], val, &status);
+        val = x_speed * MAX_AMAX * scale;
+        tmc5041_write_reg(tmc5041_VMAX[0], val, &status);
+        val = y_speed * MAX_AMAX * scale;
+        tmc5041_write_reg(tmc5041_VMAX[1], val, &status);
+
+
 }
 
 void pen_set_motor_rel_speed(int motor, float32_t scale)
