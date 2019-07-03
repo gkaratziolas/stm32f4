@@ -4,6 +4,8 @@
 #include "stm32f4xx_usart.h"
 
 #include <stdio.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 #include "arm_math.h"
 
@@ -11,7 +13,7 @@
 
 #define MAX_A1            0x000013E8
 #define MAX_V1            0x0001c350
-#define MAX_AMAX          0x000011f4
+#define MAX_AMAX          0x0000FFFF
 #define MAX_VMAX          0x001304d0
 #define MAX_DMAX          0x000012bc
 #define MAX_D1            0x00001578
@@ -22,8 +24,8 @@
 #define RAMPMODE_VNEG     0x00000002
 #define RAMPMODE_HOLD     0x00000003
 
-const uint8_t tmc5041_GCONF = 0x00;
-const uint8_t tmc5041_GSTAT = 0x01;
+const uint8_t tmc5041_GCONF        = 0x00;
+const uint8_t tmc5041_GSTAT        = 0x01;
 
 const uint8_t tmc5041_RAMPMODE[]   = {0x20, 0x40};
 const uint8_t tmc5041_XACTUAL[]    = {0x21, 0x41};
@@ -60,6 +62,20 @@ struct tmc5041_reply {
         uint32_t data;
 };
 
+struct int32_vec {
+        int32_t x;
+        int32_t y;
+};
+
+struct float32_vec {
+        float32_t x;
+        float32_t y;
+};
+
+struct int32_vec pen_get_position(void);
+struct int32_vec vec_add(struct int32_vec A, struct int32_vec B);
+struct int32_vec vec_subtract(struct int32_vec A, struct int32_vec B);
+int64_t vec_mag_squared(struct int32_vec A);
 
 void clock_init(void);
 void io_init(void);
@@ -81,6 +97,8 @@ void pen_set_motor_rel_speed(int motor, float32_t scale);
 uint8_t pen_goto_motor_rotation(int32_t A, int32_t B);
 void pen_set_xy_rel_speed(float32_t x_speed, float32_t y_speed);
 
+void pen_goto_position(struct int32_vec target);
+
 void flower_demo();
 void circle_test();
 void polygon_demo(uint32_t edges);
@@ -101,11 +119,11 @@ int main(void)
         GPIOD->MODER = (1 << 24) | (1 << 26) | (1 << 28) | (1 << 30); // set pin 13 to be general purpose output
 
         uint32_t edges = 3;
-        while(1) {
-                circle_test();
-
-                debug_usart_print("aah!\n");
+        
                 // Toggle LEDs
+        while(1) {
+                polygon_demo(edges++);
+                debug_usart_print("aah!\n");
                 GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
         }
 }
@@ -175,13 +193,14 @@ void polygon_demo(uint32_t edges)
 {
         int i = 0;
         
+        uint8_t status;
         float32_t sin_val, cos_val;
         float32_t theta = 0;
         // theta
         float32_t theta_step = 6.28318531 / edges; // 2pi/edges
         float32_t amplitude  = 50000;
         float32_t A, B;
-        int32_t rotA, rotB;
+        struct int32_vec pos;
 
         for (i=0; i<edges; i++) {
                 sin_val = arm_sin_f32(theta);
@@ -190,11 +209,10 @@ void polygon_demo(uint32_t edges)
                 arm_mult_f32(&sin_val, &amplitude, &A, 1);
                 arm_mult_f32(&cos_val, &amplitude, &B, 1);
 
-                rotA = (int32_t) A;
-                rotB = (int32_t) B;
+                pos.x = (int32_t) A;
+                pos.y = (int32_t) B;
 
-                pen_goto_motor_rotation(rotA, rotB);
-
+                pen_goto_position(pos);
                 arm_add_f32(&theta, &theta_step, &theta, 1);
         }
 }
@@ -234,6 +252,87 @@ void pen_set_motor_max_speed(int motor)
         tmc5041_write_reg(tmc5041_RAMPMODE[motor], RAMPMODE_POSITION, &status);      
 }
 
+struct int32_vec pen_get_position(void)
+{
+        struct int32_vec pos;
+        uint8_t status;
+        pos.x = tmc5041_read_reg(tmc5041_XACTUAL[0], &status);
+        pos.y = tmc5041_read_reg(tmc5041_XACTUAL[1], &status);
+        return pos;
+}
+
+struct int32_vec vec_add(struct int32_vec A, struct int32_vec B)
+{
+        struct int32_vec C;
+        C.x = A.x + B.x;
+        C.y = A.y + B.y;
+        return C;
+}
+
+struct int32_vec vec_subtract(struct int32_vec A, struct int32_vec B)
+{
+        struct int32_vec C;
+        C.x = A.x - B.x;
+        C.y = A.y - B.y;
+        return C;
+}
+
+int64_t vec_mag_squared(struct int32_vec A)
+{
+        int64_t mag_squared;
+        mag_squared = (int64_t)A.x*(int64_t)A.x + (int64_t)A.y*(int64_t)A.y;
+        return mag_squared;
+}
+
+void pen_goto_position(struct int32_vec target)
+{
+        uint8_t status;
+        char print_buf[256];
+        
+        struct int32_vec pos0 = pen_get_position();
+        struct int32_vec pos = pos0;
+
+        struct int32_vec dist0 = vec_subtract(target, pos0);
+        struct int32_vec dist = dist0;
+        
+        uint64_t dist0_squared = vec_mag_squared(dist0);
+
+        struct float32_vec speed;
+        if (int_abs(dist.x) >= int_abs(dist.y)) {
+                if (dist.x > 0)
+                        speed.x = 1;
+                else
+                        speed.x = -1;
+                speed.y = (float32_t) speed.x*dist.y/dist.x;
+        } else {
+                if (dist.y > 0)
+                        speed.y = 1;
+                else
+                        speed.y = -1;
+                speed.x = (float32_t) speed.y*dist.x/dist.y;
+        }
+        pen_set_xy_rel_speed(speed.x, speed.y);
+
+        sprintf(print_buf, "target: %ld %ld\n", target.x, target.y);
+        debug_usart_print(print_buf);
+        sprintf(print_buf, "speed: %f %f\n", speed.x, speed.y);
+        debug_usart_print(print_buf);
+
+        while (vec_mag_squared(dist) > 200000) {
+                pos = pen_get_position();
+                dist = vec_subtract(target, pos);
+
+                sprintf(print_buf, "dist.x: %ld dist.y: %ld distR2: %lld\n",
+                                    dist.x, dist.y, vec_mag_squared(dist));
+                debug_usart_print(print_buf);
+
+                // Gone too far!
+                dist0 = vec_subtract(pos, pos0);
+                if (vec_mag_squared(dist0) > dist0_squared)
+                        break;
+        }
+}
+
 void pen_set_xy_rel_speed(float32_t x_speed, float32_t y_speed)
 {
         uint32_t x_vel, x_acc, y_vel, y_acc, val;
@@ -262,7 +361,7 @@ void pen_set_xy_rel_speed(float32_t x_speed, float32_t y_speed)
                 y_speed = -1 * y_speed;
         }
         
-        float32_t scale = 0.07;
+        float32_t scale = 0.1;
         val = x_speed * MAX_VMAX * scale;
         tmc5041_write_reg(tmc5041_VMAX[0], val, &status);
         val = y_speed * MAX_VMAX * scale;
