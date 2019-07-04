@@ -172,24 +172,25 @@ void star_demo(uint32_t points)
         float32_t sin_val, cos_val;
 
         int32_t rotA, rotB;
+        struct int32_vec pos;
 
         int i;
         for (i=0; i<points; i++) {
                 // Go to large point
                 sin_val = arm_sin_f32(theta);
                 cos_val = arm_cos_f32(theta);
-                rotA = A * sin_val;
-                rotB = A * cos_val;
+                pos.x = A * sin_val;
+                pos.y = A * cos_val;
 
-                pen_goto_motor_rotation(rotA, rotB);
+                pen_goto_position(pos);
                 theta += theta_step;
                 // Go to small point
                 sin_val = arm_sin_f32(theta);
                 cos_val = arm_cos_f32(theta);
-                rotA = B * sin_val;
-                rotB = B * cos_val;
+                pos.x = B * sin_val;
+                pos.y = B * cos_val;
 
-                pen_goto_motor_rotation(rotA, rotB);
+                pen_goto_position(pos);
                 theta += theta_step;
         }
 }
