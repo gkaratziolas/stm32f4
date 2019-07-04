@@ -101,6 +101,7 @@ void pen_goto_position(struct int32_vec target);
 
 void flower_demo();
 void circle_test();
+void star_demo(uint32_t points);
 void polygon_demo(uint32_t edges);
 
 int main(void)
@@ -119,11 +120,16 @@ int main(void)
         GPIOD->MODER = (1 << 24) | (1 << 26) | (1 << 28) | (1 << 30); // set pin 13 to be general purpose output
 
         uint32_t edges = 3;
-        
-                // Toggle LEDs
+
+        char buf[32];
         while(1) {
-                polygon_demo(edges++);
-                debug_usart_print("aah!\n");
+                sprintf(buf, "edges: %ld\n", edges);
+                debug_usart_print(buf);
+                //polygon_demo(edges);
+                //flower_demo();
+                star_demo(edges);
+                edges++;
+                // Toggle LEDs
                 GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
         }
 }
@@ -156,6 +162,38 @@ void circle_test()
         }
 }
 
+void star_demo(uint32_t points)
+{
+        float32_t theta = 0;
+        float32_t theta_step = 6.28318531 / (2 * points);
+
+        float32_t A = 100000;
+        float32_t B =  20000;
+        float32_t sin_val, cos_val;
+
+        int32_t rotA, rotB;
+
+        int i;
+        for (i=0; i<points; i++) {
+                // Go to large point
+                sin_val = arm_sin_f32(theta);
+                cos_val = arm_cos_f32(theta);
+                rotA = A * sin_val;
+                rotB = A * cos_val;
+
+                pen_goto_motor_rotation(rotA, rotB);
+                theta += theta_step;
+                // Go to small point
+                sin_val = arm_sin_f32(theta);
+                cos_val = arm_cos_f32(theta);
+                rotA = B * sin_val;
+                rotB = B * cos_val;
+
+                pen_goto_motor_rotation(rotA, rotB);
+                theta += theta_step;
+        }
+}
+
 void flower_demo()
 {
         int i = 0;
@@ -165,7 +203,7 @@ void flower_demo()
         float32_t theta = 0;
         // theta
         float32_t theta_step = 0.349066; // 2pi/18
-        float32_t amplitude  = 50000;
+        float32_t amplitude  = 100000;
         float32_t A, B;
         int32_t rotA, rotB;
 
