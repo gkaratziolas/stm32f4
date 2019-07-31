@@ -125,11 +125,9 @@ int main(void)
         while(1) {
                 sprintf(buf, "edges: %ld\n", edges);
                 debug_usart_print(buf);
-                //polygon_demo(edges);
-                //flower_demo();
                 star_demo(edges);
                 edges++;
-                // Toggle LEDs
+                debug_usart_print("aah!\n");
                 GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
         }
 }
@@ -206,7 +204,7 @@ void flower_demo()
         float32_t theta_step = 0.349066; // 2pi/18
         float32_t amplitude  = 100000;
         float32_t A, B;
-        int32_t rotA, rotB;
+        struct int32_vec pos;
 
         for (i=0; i<i_MAX; i++) {
                 sin_val = arm_sin_f32(theta);
@@ -215,14 +213,17 @@ void flower_demo()
                 arm_mult_f32(&sin_val, &amplitude, &A, 1);
                 arm_mult_f32(&cos_val, &amplitude, &B, 1);
 
-                rotA = (int32_t) A;
-                rotB = (int32_t) B;
-
-                pen_goto_motor_rotation(rotA, rotB);
-                pen_goto_motor_rotation(rotB, -1*rotA);
-                pen_goto_motor_rotation(-1*rotA, -1*rotB);
-                pen_goto_motor_rotation(-1*rotB, rotA);
-                pen_goto_motor_rotation(rotA, rotB);
+                pos.x = (int32_t) A;
+                pos.y = (int32_t) B;
+                pen_goto_position(pos);
+                pos.y = -1 * pos.y;
+                pen_goto_position(pos);
+                pos.x = -1 * pos.x;
+                pen_goto_position(pos);
+                pos.y = -1 * pos.y;
+                pen_goto_position(pos);
+                pos.x = -1 * pos.x;
+                pen_goto_position(pos);
 
                 arm_add_f32(&theta, &theta_step, &theta, 1);
         }
