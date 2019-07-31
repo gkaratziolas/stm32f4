@@ -16,10 +16,10 @@ STM_COMMON=../../STM32F4-Discovery_FW_V1.1.0
 CC=arm-none-eabi-gcc
 OBJCOPY=arm-none-eabi-objcopy
 
-CFLAGS  = -g -O2 -Wall -T../../common/stm32_flash.ld 
+CFLAGS  = -g -O2 -Wall -T../../common/stm32_flash.ld -std=c99
 CFLAGS += -DUSE_STDPERIPH_DRIVER
 CFLAGS += -mlittle-endian -mthumb -mcpu=cortex-m4 -mthumb-interwork
-CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
+CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16 -specs=nosys.specs
 CFLAGS += -I../../common/include
 CFLAGS += -I../../drivers/include
 
