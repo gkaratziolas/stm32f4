@@ -1,11 +1,14 @@
 #include "stm32f4xx_usart.h"
 #include "command_usart.h"
 
+static USART_TypeDef *command_usart = 0;
+
 const uint8_t STARTA = 0x12;
 const uint8_t STARTB = 0x34;
 
-static bool rx_buffer_empty = false;
-static bool rx_command_dropped = false;
+static uint8_t rx_data_count = 0;
+static int rx_buffer_empty = 0;
+static int rx_command_dropped = 0;
 
 static enum {
         WAIT_STARTA_STATE,
@@ -31,17 +34,21 @@ static struct command_packet rx_command_packet;
  * CRC is computed against entire preceding message including STARTA and STARTB.
  * CRC needs to be checked where used. This driver doesn't check it.  
  */
-void irq()
+void USART1_IRQHandler(void)
 {
-        // TODO: Check if data available
-        uint8_t rx_byte = USART_ReceiveData(debug_usart);
-        uint8_t rx_data_count;
+        uint8_t rx_byte;
+        if (USART_GetITStatus(command_usart, USART_IT_RXNE)) {
+                rx_byte = USART_ReceiveData(command_usart);
+        } else {
+                USART_ClearITPendingBit(command_usart, 0xffff);
+                return;
+        }
 
-        switch (state) {
+        switch (rx_state) {
         case WAIT_STARTA_STATE:
                 if (rx_byte == STARTA) {
                         if (!rx_buffer_empty) {
-                                rx_command_dropped = true;
+                                rx_command_dropped = 1;
                         } else {
                                 rx_state = WAIT_STARTB_STATE;
                         }
@@ -77,27 +84,39 @@ void irq()
 
         case WAIT_CRC_STATE:
                 rx_command_packet.crc = rx_byte;
-                rx_buffer_empty = false;
-                state = WAIT_STARTA_STATE;
+                rx_buffer_empty = 0;
+                rx_state = WAIT_STARTA_STATE;
                 break;
         }
+        USART_ClearITPendingBit(command_usart, USART_IT_RXNE);
+}
+
+
+void command_usart_bind(USART_TypeDef *USARTx)
+{
+        command_usart = USARTx;
+}
+
+void command_usart_unbind(void)
+{
+        command_usart = 0;      
 }
 
 /*
  * If a packet is available, copy the packet into a passed-in struct and return
- * true. Else return false.
+ * 1. Else return 0.
  */
-bool command_usart_receive(struct command_packet *packet_copy)
+int command_usart_receive(struct command_packet *packet_copy)
 {
         if (rx_buffer_empty) {
-                return false;
+                return 0;
         }
         packet_copy->command     = rx_command_packet.command;
         packet_copy->data_length = rx_command_packet.data_length;
         packet_copy->crc         = rx_command_packet.crc;
 
         int i, j;
-        for (i=0; i<data_length; i++) {
+        for (i=0; i<rx_command_packet.data_length; i++) {
                 packet_copy->data[i] = rx_command_packet.data[i];
         }
         // Ensure top of recieved data buffer is empty
@@ -105,29 +124,30 @@ bool command_usart_receive(struct command_packet *packet_copy)
                 packet_copy->data[j] = 0;
         }
 
-        rx_buffer_empty = true;
-        return true;
+        rx_buffer_empty = 1;
+        return 1;
 }
 
-bool command_usart_transmit(struct command_packet *tx_packet)
+int command_usart_transmit(struct command_packet *tx_packet)
 {
-        USART_TransmitData(STARTA);
-        USART_TransmitData(STARTB);
-        USART_TransmitData(tx_packet->command);
-        USART_TransmitData(tx_packet->data_length);
+        USART_SendData(command_usart, STARTA);
+        USART_SendData(command_usart, STARTB);
+        USART_SendData(command_usart, tx_packet->command);
+        USART_SendData(command_usart, tx_packet->data_length);
+        int i;
         for (i=0; i<tx_packet->data_length; i++) {
-                USART_TransmitData(tx_packet->data[i]);
+                USART_SendData(command_usart, tx_packet->data[i]);
         }
-        USART_TransmitData(tx_packet->crc);
-        return true
+        USART_SendData(command_usart, tx_packet->crc);
+        return 1;
 }
 
-bool command_usart_check_packet_dropped(void)
+int command_usart_check_packet_dropped(void)
 {
         if (rx_command_dropped) {
-                rx_command_dropped = false;
-                return true;
+                rx_command_dropped = 0;
+                return 1;
         }
-        return false;
+        return 0;
 }
 
