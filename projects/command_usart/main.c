@@ -9,20 +9,26 @@
 void clock_init(void);
 void io_init(void);
 void usart_init(void);
+void nvic_init(void);
 
 int main(void)
 {
         clock_init();
         io_init();
         usart_init();
+        nvic_init();
         command_usart_bind(USART1);
 
         struct command_packet p;
-        if (command_usart_receive(&p)) {
-                if (p.command == 0xf0) {
+        
+        while(1) {
+                if (command_usart_receive(&p)) {
                         GPIO_SetBits(GPIOD, GPIO_Pin_13);
-                } else {
-                        GPIO_SetBits(GPIOD, GPIO_Pin_13);
+                        if (p.command == 0xf0) {
+                                GPIO_SetBits(GPIOD, GPIO_Pin_13);
+                        } else {
+                                GPIO_ResetBits(GPIOD, GPIO_Pin_13);
+                        }
                 }
         }
 }

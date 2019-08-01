@@ -7,7 +7,7 @@ const uint8_t STARTA = 0x12;
 const uint8_t STARTB = 0x34;
 
 static uint8_t rx_data_count = 0;
-static int rx_buffer_empty = 0;
+static int rx_buffer_empty   = 1;
 static int rx_command_dropped = 0;
 
 static enum {
@@ -43,7 +43,6 @@ void USART1_IRQHandler(void)
                 USART_ClearITPendingBit(command_usart, 0xffff);
                 return;
         }
-
         switch (rx_state) {
         case WAIT_STARTA_STATE:
                 if (rx_byte == STARTA) {
@@ -115,13 +114,16 @@ int command_usart_receive(struct command_packet *packet_copy)
         packet_copy->data_length = rx_command_packet.data_length;
         packet_copy->crc         = rx_command_packet.crc;
 
-        int i, j;
+        int i;
+
+        // Empty rx copy buffer - maybe don't do this
+        for (i=0; i<MAX_DATA_LENGTH; i++) {
+                packet_copy->data[i] = 0;
+        }
+
+        // Copy in data
         for (i=0; i<rx_command_packet.data_length; i++) {
                 packet_copy->data[i] = rx_command_packet.data[i];
-        }
-        // Ensure top of recieved data buffer is empty
-        for (j=i; i<MAX_DATA_LENGTH+1; j++) {
-                packet_copy->data[j] = 0;
         }
 
         rx_buffer_empty = 1;
