@@ -1,5 +1,9 @@
+#!/usr/bin/python3
+
 import serial
 import sys
+import time
+import random
 
 BAUD_RATE = 115200
 
@@ -26,6 +30,17 @@ def send_command(ser, command = 0x00):
 	ser.write((0x00).to_bytes(1, "little"))
 	ser.write((0x0f).to_bytes(1, "little"))
 
+def leds_on(ser, led0, led1, led2, led3):
+	ser.write((STARTA).to_bytes(1, "little"))
+	ser.write((STARTB).to_bytes(1, "little"))
+	ser.write((0x02).to_bytes(1, "little"))
+	ser.write((0x04).to_bytes(1, "little"))
+	ser.write((led0).to_bytes(1, "little"))
+	ser.write((led1).to_bytes(1, "little"))
+	ser.write((led2).to_bytes(1, "little"))
+	ser.write((led3).to_bytes(1, "little"))
+	ser.write((0x0f).to_bytes(1, "little"))
+
 if __name__ == "__main__":
 	if len(sys.argv) < 2:
 		print("error: please specify serial port.")
@@ -33,14 +48,20 @@ if __name__ == "__main__":
 	ser = serial_init(sys.argv[1])
 	if ser == None:
 		print("error: can't open serial port {}".format(sys.argv[1]))
+		sys.exit(1)
 	try:
 		command = sys.argv[2]
 		try:
 			command = int(command, 16)
+			send_command(ser, command)
+			sys.exit()
 		except ValueError:
 			print("error: second argument should be single hex byte. i.e. 0x13")
+			sys.exit(1)
 	except IndexError:
 		command = 0x00
 
-	send_command(ser, command)
+	while(1):
+		leds_on(ser, random.randint(0,1), random.randint(0,1), random.randint(0,1), random.randint(0,1))
+		time.sleep(0.1)
 	serial_deinit(ser)

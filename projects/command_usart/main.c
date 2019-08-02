@@ -6,10 +6,14 @@
 
 #include "command_usart.h"
 
+#define COMMAND_RESET 0x01
+#define COMMAND_LED   0x02
+
 void clock_init(void);
 void io_init(void);
 void usart_init(void);
 void nvic_init(void);
+void handle_command(struct command_packet *p);
 
 int main(void)
 {
@@ -23,13 +27,30 @@ int main(void)
         
         while(1) {
                 if (command_usart_receive(&p)) {
-                        GPIO_SetBits(GPIOD, GPIO_Pin_13);
-                        if (p.command == 0xf0) {
-                                GPIO_SetBits(GPIOD, GPIO_Pin_13);
+                        handle_command(&p);
+                }
+        }
+}
+
+void handle_command(struct command_packet *p)
+{
+        int i;
+        switch (p->command) {
+        case COMMAND_RESET:
+                NVIC_SystemReset();
+                break;
+        case COMMAND_LED:
+                if (p->data_length < 4) {
+                        break;
+                }
+                for (i=0; i<4; i++) {
+                        if (p->data[i]) {
+                                GPIO_SetBits(GPIOD, GPIO_Pin_12 << i);
                         } else {
-                                GPIO_ResetBits(GPIOD, GPIO_Pin_13);
+                                GPIO_ResetBits(GPIOD, GPIO_Pin_12 << i);
                         }
                 }
+                break;
         }
 }
 
@@ -59,9 +80,10 @@ void io_init(void)
         GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
         GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-        // Initialization of GPIOD (for orange LED)
+        // Initialization of GPIOD (for four colour LED)
         GPIO_InitTypeDef GPIO_InitDef;
-        GPIO_InitDef.GPIO_Pin = GPIO_Pin_13;
+        GPIO_InitDef.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_13 |
+                                GPIO_Pin_14 | GPIO_Pin_15;
         GPIO_InitDef.GPIO_Mode = GPIO_Mode_OUT;
         GPIO_InitDef.GPIO_OType = GPIO_OType_PP;
         GPIO_InitDef.GPIO_PuPd = GPIO_PuPd_NOPULL;
