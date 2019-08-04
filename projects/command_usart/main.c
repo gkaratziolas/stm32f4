@@ -52,6 +52,8 @@ void handle_command(struct command_packet *p)
                 }
                 break;
         }
+        // Confirm packet was correctly interpreted by returning copy
+        command_usart_transmit(p);
 }
 
 void clock_init(void)
