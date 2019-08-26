@@ -3,7 +3,10 @@
 #include "stm32f4xx_gpio.h"
 #include "stm32f4xx_usart.h"
 
+#include <stdio.h>
+
 #include "debug_usart.h"
+#include "system_utils.h"
 
 void clock_init(void);
 void io_init(void);
@@ -11,8 +14,8 @@ void usart_init(void);
 
 int main(void)
 {
-
         clock_init();
+        system_uptime_ms_init();
         io_init();
         usart_init();
         debug_usart_bind(USART1);
@@ -20,10 +23,11 @@ int main(void)
         // Send "Hello, World!" to PC
         debug_usart_print("Hello, World!\n");
 
+        char print_buffer[128];
         while (1)
         {
                 // Get a char from PC
-                uint16_t data = debug_usart_getchar();
+                uint16_t data = 0;// debug_usart_getchar();
 
                 if (data == 'H')
                 {
@@ -35,6 +39,8 @@ int main(void)
                     // If received char is 'L' then turn off orange LED
                     GPIO_ResetBits(GPIOD, GPIO_Pin_13);
                 }
+                sprintf(print_buffer, "ok!\n");
+                debug_usart_print(print_buffer);
         }
 }
 
