@@ -32,23 +32,26 @@ uint32_t debug_usart_putchar(char c)
 
 void debug_usart_print_timestamp(void)
 {
-        uint32_t uptime_ms   = system_get_uptime_ms();
-        uint32_t miliseconds = uptime_ms % 1000;
-        uint32_t seconds     = uptime_ms / 1000;
+        char time_str[9];
+        uint32_t i;
+        uint32_t uptime_ms = system_get_uptime_ms();
+        uint32_t show_char = 0;
 
-        char miliseconds_str[8];
-        sprintf(miliseconds_str, "%07lu", miliseconds);
-        char seconds_str[8];
-        sprintf(seconds_str, "%07lu", seconds);
+        sprintf(time_str, "%08lu", uptime_ms);
 
-        int i;
         debug_usart_putchar('[');
-        for (i=2; i<7; i++) {
-                debug_usart_putchar(seconds_str[i]);
-        }
-        debug_usart_putchar('.');
-        for (i=4; i<7; i++) {
-                debug_usart_putchar(miliseconds_str[i]);
+        for (i=0; i<8; i++) {
+                if ((time_str[i] != '0') || (i == 4)) {
+                        show_char = 1;
+                }
+                if (i == 5) {
+                        debug_usart_putchar('.');
+                }
+                if (show_char) {
+                        debug_usart_putchar(time_str[i]);
+                } else {
+                        debug_usart_putchar(' ');
+                }
         }
         debug_usart_putchar(']');
         debug_usart_putchar(' ');
