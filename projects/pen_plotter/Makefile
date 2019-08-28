@@ -2,7 +2,7 @@
 SRCS=main.c ../../common/src/*.c ../../drivers/src/*.c
 
 # Library modules
-SRCS += stm32f4xx_gpio.c stm32f4xx_rcc.c stm32f4xx_usart.c
+SRCS += stm32f4xx_gpio.c stm32f4xx_rcc.c stm32f4xx_usart.c misc.c
 
 # Binaries will be generated with this name (.elf, .bin, .hex, etc)
 PROJ_NAME=pen_plotter

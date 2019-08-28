@@ -2,10 +2,15 @@
 #include "stm32f4xx_rcc.h"
 #include "stm32f4xx_gpio.h"
 #include "stm32f4xx_usart.h"
+#include "misc.h"
 
 #include "arm_math.h"
 
-#include "debug_usart.h"
+#include "command_usart.h"
+
+#define COMMAND_RESET 0x01
+#define COMMAND_LED   0x02
+#define COMMAND_MOVE  0x03
 
 #define MAX_A1         0x000013E8
 #define MAX_V1         0x0001c350
@@ -77,30 +82,67 @@ uint8_t pen_goto_motor_rotation(int32_t A, int32_t B);
 void flower_demo();
 void polygon_demo(uint32_t edges);
 
+void handle_command(struct command_packet *p);
+void nvic_init(void);
+
 int main(void)
 {
         clock_init();
         io_init();
         spi_init();
         usart_init();
-        debug_usart_bind(USART1);
-
+        nvic_init();
+        command_usart_bind(USART1);
         pen_motors_init();
 
-        // Send "Hello, World!" to PC
-        debug_usart_print("Hello, World!\n");
-
-        GPIOD->MODER = (1 << 24) | (1 << 26) | (1 << 28) | (1 << 30); // set pin 13 to be general purpose output
-
-        uint32_t edges = 3;
+        struct command_packet p;
+        
         while(1) {
-                polygon_demo(edges);
-                edges++;
-
-                debug_usart_print("aah!\n");
-                // Toggle LEDs
-                GPIOD->ODR ^=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
+                if (command_usart_receive(&p)) {
+                        handle_command(&p);
+                }
         }
+}
+
+void handle_command(struct command_packet *p)
+{
+        int i;
+        switch (p->command) {
+        case COMMAND_RESET:
+                NVIC_SystemReset();
+                break;
+        case COMMAND_LED:
+                if (p->data_length < 4) {
+                        break;
+                }
+                for (i=0; i<4; i++) {
+                        if (p->data[i]) {
+                                GPIO_SetBits(GPIOD, GPIO_Pin_12 << i);
+                        } else {
+                                GPIO_ResetBits(GPIOD, GPIO_Pin_12 << i);
+                        }
+                }
+                break;
+        case COMMAND_MOVE:
+                if (p->data_length < 8) {
+                        break;
+                }
+                uint32_t x;
+                uint32_t y;
+                y = (uint32_t)(p->data[7]) << 24 |
+                    (uint32_t)(p->data[6]) << 16 |
+                    (uint32_t)(p->data[5]) <<  8 |
+                    (uint32_t)(p->data[4]) << 0;
+                x = (uint32_t)(p->data[3]) << 24 |
+                    (uint32_t)(p->data[2]) << 16 |
+                    (uint32_t)(p->data[1]) <<  8 |
+                    (uint32_t)(p->data[0]) << 0;
+                pen_goto_motor_rotation(x, y);
+                GPIOD->ODR |=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
+                break;
+        }
+        // Confirm packet was correctly interpreted by returning copy
+        command_usart_transmit(p);
 }
 
 void flower_demo()
@@ -312,6 +354,16 @@ void io_init(void)
         );
 
         GPIOA->AFR[0] = 0x55500000; // Set PA5/6/7 to alternative function 5
+
+        // Initialization of GPIOD (for four colour LED)
+        GPIO_InitTypeDef GPIO_InitDef;
+        GPIO_InitDef.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_13 |
+                                GPIO_Pin_14 | GPIO_Pin_15;
+        GPIO_InitDef.GPIO_Mode = GPIO_Mode_OUT;
+        GPIO_InitDef.GPIO_OType = GPIO_OType_PP;
+        GPIO_InitDef.GPIO_PuPd = GPIO_PuPd_NOPULL;
+        GPIO_InitDef.GPIO_Speed = GPIO_Speed_50MHz;
+        GPIO_Init(GPIOD, &GPIO_InitDef);
 }
 
 void gpio_set(uint8_t pin, GPIO_TypeDef* port)
@@ -412,6 +464,7 @@ void tmc5041_spi_transfer(struct tmc5041_command *command,
 
 void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status)
 {
+
         struct tmc5041_command command = {
                 .reg  = reg + 0x80,
                 .data = data
@@ -449,5 +502,17 @@ void usart_init(void)
         USART_Init(USART1, &USART_InitStruct);
 
         // Enable USART1
-        USART_Cmd(USART1, ENABLE); 
+        USART_Cmd(USART1, ENABLE);
+
+        // Enable RX interrupt on USART1
+        USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
+}
+
+void nvic_init(void) {
+        NVIC_InitTypeDef NVIC_InitStructure;
+        NVIC_InitStructure.NVIC_IRQChannel = USART1_IRQn;
+        NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+        NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+        NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+        NVIC_Init(&NVIC_InitStructure);
 }
