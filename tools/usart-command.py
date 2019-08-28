@@ -35,8 +35,8 @@ def move_motors(ser, x, y):
 	ser.write((STARTB).to_bytes(1, "little"))
 	ser.write((0x03).to_bytes(1, "little"))
 	ser.write((0x08).to_bytes(1, "little"))
-	ser.write((x).to_bytes(4, "little"))
-	ser.write((y).to_bytes(4, "little"))
+	ser.write((x).to_bytes(4, "little", signed=True))
+	ser.write((y).to_bytes(4, "little", signed=True))
 	ser.write((0x0f).to_bytes(1, "little"))
 
 def leds_on(ser, led0, led1, led2, led3):
@@ -57,7 +57,7 @@ def read_serial(ser):
 		x = ser.read(1)
 	print("")
 
-if __name__ == "__main__":
+def main():
 	if len(sys.argv) < 2:
 		print("error: please specify serial port.")
 		sys.exit(1)
@@ -84,6 +84,27 @@ if __name__ == "__main__":
 
 	while(1):
 		leds_on(ser, random.randint(0,1), random.randint(0,1), random.randint(0,1), random.randint(0,1))
-		read_serial(ser);
+		read_serial(ser)
 		time.sleep(0.1)
 	serial_deinit(ser)
+
+from Xlib import display
+
+ser = serial_init("/dev/ttyUSB0")
+x_old = 0
+y_old = 0
+while (1):
+	data = display.Display().screen().root.query_pointer()._data
+	x = data["root_x"]*100
+	y = data["root_y"]*100
+
+	if x_old != x or y_old != y:
+		move_motors(ser, x, y)
+		x_old = x
+		y_old = y
+	time.sleep(0.1)
+
+serial_deinit(ser)
+
+if __name__ == "__main__":
+	main()
