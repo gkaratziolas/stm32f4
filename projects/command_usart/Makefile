@@ -1,5 +1,5 @@
 # Put your source files here (or *.c, etc)
-SRCS=main.c ../../common/src/system_stm32f4xx.c ../../drivers/src/*.c
+SRCS=main.c ../../common/src/*.c ../../drivers/src/*.c
 
 # Library modules
 SRCS += stm32f4xx_gpio.c stm32f4xx_rcc.c stm32f4xx_usart.c misc.c
