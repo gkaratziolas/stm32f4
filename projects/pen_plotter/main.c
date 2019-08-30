@@ -99,12 +99,71 @@ int64_t vec_mag_squared(struct int32_vec A);
 void pen_motors_init(void);
 void pen_set_motor_motion_params_max(int motor);
 uint8_t pen_set_velocity(struct float32_vec velocity);
-void pen_set_motor_rel_speed(int motor, float32_t scale);
-uint8_t pen_goto_motor_rotation(int32_t A, int32_t B);
 uint8_t pen_stop(void);
+uint8_t pen_set_target_position(struct int32_vec target);
+struct int32_vec pen_get_position(void);
+uint32_t pen_motion_check_complete(struct int32_vec start, struct int32_vec end);
+
 
 void handle_command(struct command_packet *p);
 void nvic_init(void);
+
+struct int32_vec motion_fifo[32];
+uint32_t motion_fifo_front = 0;
+uint32_t motion_fifo_back  = 0;
+uint32_t motion_fifo_full  = 0;
+uint32_t motion_fifo_push(struct int32_vec *target);
+uint32_t motion_fifo_pop(struct int32_vec *target);
+uint32_t motion_fifo_peek(struct int32_vec *target);
+uint32_t motion_fifo_check_full(void);
+uint32_t motion_fifo_check_empty(void);
+
+uint32_t motion_fifo_push(struct int32_vec *target)
+{
+        if (motion_fifo_check_full()) {
+                return 0;
+        }
+        motion_fifo[motion_fifo_back].x = target->x;
+        motion_fifo[motion_fifo_back].y = target->y;
+        motion_fifo_back++;
+
+        if (motion_fifo_back == motion_fifo_front) {
+                motion_fifo_full = 1;
+        }
+        return 1;
+}
+
+uint32_t motion_fifo_pop(struct int32_vec *target)
+{
+        if (motion_fifo_check_empty()) {
+                return 0;
+        }
+        target->x = motion_fifo[motion_fifo_front].x;
+        target->y = motion_fifo[motion_fifo_front].y;
+        motion_fifo_front++;
+        motion_fifo_full = 0;
+        return 1;
+}
+
+uint32_t motion_fifo_peek(struct int32_vec *target)
+{
+        if (motion_fifo_check_empty()) {
+                return 0;
+        }
+        target->x = motion_fifo[motion_fifo_front].x;
+        target->y = motion_fifo[motion_fifo_front].y;
+        return 1;
+}
+
+uint32_t motion_fifo_check_full(void)
+{
+        return motion_fifo_full;
+}
+
+uint32_t motion_fifo_check_empty(void)
+{
+        return (!motion_fifo_full) && (motion_fifo_front == motion_fifo_back);
+}
 
 int main(void)
 {
@@ -117,8 +176,18 @@ int main(void)
         pen_motors_init();
 
         struct command_packet p;
-        
-        while(1) {
+
+        struct int32_vec start  = pen_get_position();
+        struct int32_vec target = start;
+
+        while (1) {
+                if (pen_motion_check_complete(start, target)) {
+                        if (motion_fifo_check_empty()) {
+                                pen_stop();
+                        }
+                        motion_fifo_pop(&target);
+                        pen_set_target_position(target);
+                }
                 if (command_usart_receive(&p)) {
                         handle_command(&p);
                 }
@@ -179,17 +248,16 @@ void handle_command(struct command_packet *p)
                 if (p->data_length < 8) {
                         break;
                 }
-                uint32_t x;
-                uint32_t y;
-                y = (uint32_t)(p->data[7]) << 24 |
-                    (uint32_t)(p->data[6]) << 16 |
-                    (uint32_t)(p->data[5]) <<  8 |
-                    (uint32_t)(p->data[4]) << 0;
-                x = (uint32_t)(p->data[3]) << 24 |
-                    (uint32_t)(p->data[2]) << 16 |
-                    (uint32_t)(p->data[1]) <<  8 |
-                    (uint32_t)(p->data[0]) << 0;
-                pen_goto_motor_rotation(x, y);
+                struct int32_vec target;
+                target.y = (uint32_t)(p->data[7]) << 24 |
+                           (uint32_t)(p->data[6]) << 16 |
+                           (uint32_t)(p->data[5]) <<  8 |
+                           (uint32_t)(p->data[4]) << 0;
+                target.x = (uint32_t)(p->data[3]) << 24 |
+                           (uint32_t)(p->data[2]) << 16 |
+                           (uint32_t)(p->data[1]) <<  8 |
+                           (uint32_t)(p->data[0]) << 0;
+                motion_fifo_push(&target);
                 GPIOD->ODR |=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
                 break;
         }
@@ -245,7 +313,6 @@ uint8_t pen_set_target_position(struct int32_vec target)
 {
         struct int32_vec position = pen_get_position();
         struct int32_vec distance = vec_subtract(target, position);
-        uint64_t distance_squared = vec_mag_squared(distance);
         struct float32_vec velocity;
 
         if (int_abs(distance.x) >= int_abs(distance.y)) {
@@ -266,16 +333,19 @@ uint8_t pen_set_target_position(struct int32_vec target)
         return status;
 }
 
-// WIP
-uint8_t huh()
+uint32_t pen_motion_check_complete(struct int32_vec start, struct int32_vec end)
 {
-        if (pen_at_target()) {
-                if (queue_empty(&pen_position_queue)) {
-                        pen_stop();
-                } else {
-                        pen_set_position(queue_pop(&pen_position_queue))
-                }
+        struct int32_vec position = pen_get_position();
+
+        struct int32_vec distance_start = vec_subtract(position, start);
+        struct int32_vec distance_end   = vec_subtract(position, end);
+        struct int32_vec start_end      = vec_subtract(end, start);
+
+        if ((vec_mag_squared(distance_start) > vec_mag_squared(start_end)) |
+            (vec_mag_squared(distance_end)   < (int64_t)200000)) {
+                return 1;
         }
+        return 0;
 }
 
 // Set velocity yo some fraction of v_max between +/-1
@@ -313,72 +383,20 @@ uint8_t pen_set_velocity(struct float32_vec velocity)
         // Write motor velocity registers
         uint32_t val;
         val = velocity.x * MAX_VMAX * scale;
-        status |= tmc5041_write_reg(tmc5041_VMAX[0], val, &status);
+        tmc5041_write_reg(tmc5041_VMAX[0], val, &status);
         val = velocity.y * MAX_VMAX * scale;
-        status |= tmc5041_write_reg(tmc5041_VMAX[1], val, &status);
+        tmc5041_write_reg(tmc5041_VMAX[1], val, &status);
 
         return status;
 }
 
 uint8_t pen_stop(void)
 {
-        uint8_t status = pen_set_velocity(struct float32_t {0.0f, 0.0f});
+        struct float32_vec speed;
+        speed.x = 0.0f;
+        speed.y = 0.0f;
+        uint8_t status = pen_set_velocity(speed);
 }
-
-uint8_t pen_goto_motor_rotation(int32_t A, int32_t B)
-{
-        uint8_t status;
-
-        int32_t A0 = tmc5041_read_reg(tmc5041_XACTUAL[0], &status);
-        int32_t B0 = tmc5041_read_reg(tmc5041_XACTUAL[1], &status);
-
-        int32_t distA = int_abs(A - A0);
-        int32_t distB = int_abs(B - B0);
-
-        if (distA >= distB) {
-                pen_set_motor_max_speed(0);
-                pen_set_motor_rel_speed(1, (float32_t)distB/distA);
-        } else {
-                pen_set_motor_max_speed(1);
-                pen_set_motor_rel_speed(0, (float32_t)distA/distB);
-        }
-
-        tmc5041_write_reg(tmc5041_XTARGET[0], A, &status);
-        tmc5041_write_reg(tmc5041_XTARGET[1], B, &status);
-
-        // Wait until location is reached
-        // TODO: Add timeout
-        //while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[0], &status) & (1<<9))) {__asm("nop");}
-        //while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[1], &status) & (1<<9))) {__asm("nop");}
-
-        for (int i=0; i<50000000; i++) {__asm("nop");}
-
-        return status;
-}
-
-void pen_set_motor_rel_speed(int motor, float32_t scale)
-{
-        int32_t val;
-        uint8_t status;
-
-        if (scale > 1) {
-                scale = 1;
-        }
-
-        val = scale * MAX_A1;
-        tmc5041_write_reg(tmc5041_A1[motor],    val, &status);
-        val = scale * MAX_V1;
-        tmc5041_write_reg(tmc5041_V1[motor],    val, &status);
-        val = scale * MAX_AMAX;
-        tmc5041_write_reg(tmc5041_AMAX[motor],  val, &status);
-        val = scale * MAX_VMAX;
-        tmc5041_write_reg(tmc5041_VMAX[motor],  val, &status);
-        val = scale * MAX_DMAX;
-        tmc5041_write_reg(tmc5041_DMAX[motor],  val, &status);
-        val = scale * MAX_D1;
-        tmc5041_write_reg(tmc5041_D1[motor],    val, &status);
-}
-
 
 void clock_init(void)
 {
