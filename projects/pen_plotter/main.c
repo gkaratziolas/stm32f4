@@ -3,6 +3,8 @@
 #include "stm32f4xx_gpio.h"
 #include "stm32f4xx_usart.h"
 
+#include <stdio.h>
+
 #include "arm_math.h"
 
 #include "debug_usart.h"
@@ -174,7 +176,7 @@ void pen_motors_init()
         for (i=0; i<2; i++) {
                 tmc5041_write_reg(tmc5041_CHOPCONF[i],   0x000100c5, &status);
                 tmc5041_write_reg(tmc5041_IHOLD_IRUN[i], 0x00011f05, &status);
-                tmc5041_write_reg(tmc5041_TZEROWAIT[i],  0x00002710, &status);
+                tmc5041_write_reg(tmc5041_TZEROWAIT[i],  0, &status);
                 tmc5041_write_reg(tmc5041_PWMCONF[i],    0x000401c8, &status);
                 tmc5041_write_reg(tmc5041_VHIGH[i],      0x00061a80, &status);
                 tmc5041_write_reg(tmc5041_VCOOLTHRS[i],  0x00007530, &status); 
@@ -220,8 +222,6 @@ void pen_set_motor_rel_speed(int motor, float32_t scale)
         tmc5041_write_reg(tmc5041_DMAX[motor],  val, &status);
         val = scale * MAX_D1;
         tmc5041_write_reg(tmc5041_D1[motor],    val, &status);
-        val = scale * MAX_VSTOP;
-        tmc5041_write_reg(tmc5041_VSTOP[motor], val, &status);
 }
 
 int32_t int_abs(int32_t a)
@@ -235,6 +235,7 @@ int32_t int_abs(int32_t a)
 uint8_t pen_goto_motor_rotation(int32_t A, int32_t B)
 {
         uint8_t status;
+        char print_buf[32];
 
         int32_t A0 = tmc5041_read_reg(tmc5041_XACTUAL[0], &status);
         int32_t B0 = tmc5041_read_reg(tmc5041_XACTUAL[1], &status);
@@ -254,11 +255,14 @@ uint8_t pen_goto_motor_rotation(int32_t A, int32_t B)
         tmc5041_write_reg(tmc5041_XTARGET[1], B, &status);
 
         // Wait until location is reached
-        // TODO: Add timeout
-        //while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[0], &status) & (1<<9))) {__asm("nop");}
-        //while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[1], &status) & (1<<9))) {__asm("nop");}
 
-        for (int i=0; i<50000000; i++) {__asm("nop");}
+        int32_t A_dist, B_dist;
+        while (!(tmc5041_read_reg(tmc5041_RAMP_STAT[0], &status) & (1<<9)) ||
+               !(tmc5041_read_reg(tmc5041_RAMP_STAT[1], &status) & (1<<9)))
+        {
+                // TODO: Add timeout
+                ;;
+        }
 
         return status;
 }
