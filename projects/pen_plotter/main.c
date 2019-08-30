@@ -4,14 +4,17 @@
 #include "stm32f4xx_usart.h"
 #include "misc.h"
 
+// Included for fast floating point calculations
 #include "arm_math.h"
 
 #include "command_usart.h"
 
+// USART command codes
 #define COMMAND_RESET 0x01
 #define COMMAND_LED   0x02
 #define COMMAND_MOVE  0x03
 
+// Default velocity curve values for tmc5041 motor driver
 #define MAX_A1         0x000013E8
 #define MAX_V1         0x0001c350
 #define MAX_AMAX       0x000011f4
@@ -19,10 +22,15 @@
 #define MAX_DMAX       0x000012bc
 #define MAX_D1         0x00001578
 #define MAX_VSTOP      0x0000000A
-#define MAX_RAMPMODE   0x00000000
 
-const uint8_t tmc5041_GCONF = 0x00;
-const uint8_t tmc5041_GSTAT = 0x01;
+#define RAMPMODE_POSITION 0x00000000
+#define RAMPMODE_VPOS     0x00000001
+#define RAMPMODE_VNEG     0x00000002
+#define RAMPMODE_HOLD     0x00000003
+
+// TMC5041 register addresses
+const uint8_t tmc5041_GCONF        = 0x00;
+const uint8_t tmc5041_GSTAT        = 0x01;
 
 const uint8_t tmc5041_RAMPMODE[]   = {0x20, 0x40};
 const uint8_t tmc5041_XACTUAL[]    = {0x21, 0x41};
@@ -48,7 +56,7 @@ const uint8_t tmc5041_PWMCONF[]    = {0x10, 0x18};
 
 const uint8_t tmc5041_RAMP_STAT[]  = {0x35, 0x55};
 
-
+// TMC5041 command structs
 struct tmc5041_command {
         uint8_t  reg;
         uint32_t data;
@@ -59,6 +67,16 @@ struct tmc5041_reply {
         uint32_t data;
 };
 
+// 2D vectors for (x,y) positions and velocities
+struct int32_vec {
+        int32_t x;
+        int32_t y;
+};
+
+struct float32_vec {
+        float32_t x;
+        float32_t y;
+};
 
 void clock_init(void);
 void io_init(void);
@@ -69,18 +87,21 @@ void gpio_set   (uint8_t pin, GPIO_TypeDef* port);
 void gpio_clear (uint8_t pin, GPIO_TypeDef* port);
 void gpio_toggle(uint8_t pin, GPIO_TypeDef* port);
 
-void     tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
+void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
 uint32_t tmc5041_read_reg (uint8_t reg, uint8_t *status);
 
 int32_t int_abs(int32_t a);
 
+struct int32_vec vec_add(struct int32_vec A, struct int32_vec B);
+struct int32_vec vec_subtract(struct int32_vec A, struct int32_vec B);
+int64_t vec_mag_squared(struct int32_vec A);
+
 void pen_motors_init(void);
-void pen_set_motor_max_speed(int motor);
+void pen_set_motor_motion_params_max(int motor);
+uint8_t pen_set_velocity(struct float32_vec velocity);
 void pen_set_motor_rel_speed(int motor, float32_t scale);
 uint8_t pen_goto_motor_rotation(int32_t A, int32_t B);
-
-void flower_demo();
-void polygon_demo(uint32_t edges);
+uint8_t pen_stop(void);
 
 void handle_command(struct command_packet *p);
 void nvic_init(void);
@@ -102,6 +123,37 @@ int main(void)
                         handle_command(&p);
                 }
         }
+}
+
+struct int32_vec vec_add(struct int32_vec A, struct int32_vec B)
+{
+        struct int32_vec C;
+        C.x = A.x + B.x;
+        C.y = A.y + B.y;
+        return C;
+}
+
+struct int32_vec vec_subtract(struct int32_vec A, struct int32_vec B)
+{
+        struct int32_vec C;
+        C.x = A.x - B.x;
+        C.y = A.y - B.y;
+        return C;
+}
+
+int64_t vec_mag_squared(struct int32_vec A)
+{
+        int64_t mag_squared;
+        mag_squared = (int64_t)A.x*(int64_t)A.x + (int64_t)A.y*(int64_t)A.y;
+        return mag_squared;
+}
+
+int32_t int_abs(int32_t a)
+{
+        if (a > 0) {
+                return a;
+        }
+        return -1*a;
 }
 
 void handle_command(struct command_packet *p)
@@ -145,67 +197,6 @@ void handle_command(struct command_packet *p)
         command_usart_transmit(p);
 }
 
-void flower_demo()
-{
-        int i = 0;
-        int i_MAX = 18;
-        
-        float32_t sin_val, cos_val;
-        float32_t theta = 0;
-        // theta
-        float32_t theta_step = 0.349066; // 2pi/18
-        float32_t amplitude  = 50000;
-        float32_t A, B;
-        int32_t rotA, rotB;
-
-        for (i=0; i<i_MAX; i++) {
-                sin_val = arm_sin_f32(theta);
-                cos_val = arm_cos_f32(theta);
-
-                arm_mult_f32(&sin_val, &amplitude, &A, 1);
-                arm_mult_f32(&cos_val, &amplitude, &B, 1);
-
-                rotA = (int32_t) A;
-                rotB = (int32_t) B;
-
-                pen_goto_motor_rotation(rotA, rotB);
-                pen_goto_motor_rotation(rotB, -1*rotA);
-                pen_goto_motor_rotation(-1*rotA, -1*rotB);
-                pen_goto_motor_rotation(-1*rotB, rotA);
-                pen_goto_motor_rotation(rotA, rotB);
-
-                arm_add_f32(&theta, &theta_step, &theta, 1);
-        }
-}
-
-void polygon_demo(uint32_t edges)
-{
-        int i = 0;
-        
-        float32_t sin_val, cos_val;
-        float32_t theta = 0;
-        // theta
-        float32_t theta_step = 6.28318531 / edges; // 2pi/edges
-        float32_t amplitude  = 50000;
-        float32_t A, B;
-        int32_t rotA, rotB;
-
-        for (i=0; i<edges; i++) {
-                sin_val = arm_sin_f32(theta);
-                cos_val = arm_cos_f32(theta);
-
-                arm_mult_f32(&sin_val, &amplitude, &A, 1);
-                arm_mult_f32(&cos_val, &amplitude, &B, 1);
-
-                rotA = (int32_t) A;
-                rotB = (int32_t) B;
-
-                pen_goto_motor_rotation(rotA, rotB);
-
-                arm_add_f32(&theta, &theta_step, &theta, 1);
-        }
-}
-
 void pen_motors_init()
 {
         int i;
@@ -216,7 +207,7 @@ void pen_motors_init()
         for (i=0; i<2; i++) {
                 tmc5041_write_reg(tmc5041_CHOPCONF[i],   0x000100c5, &status);
                 tmc5041_write_reg(tmc5041_IHOLD_IRUN[i], 0x00011f05, &status);
-                tmc5041_write_reg(tmc5041_TZEROWAIT[i],  0x00002710, &status);
+                tmc5041_write_reg(tmc5041_TZEROWAIT[i],  0x00000000, &status);
                 tmc5041_write_reg(tmc5041_PWMCONF[i],    0x000401c8, &status);
                 tmc5041_write_reg(tmc5041_VHIGH[i],      0x00061a80, &status);
                 tmc5041_write_reg(tmc5041_VCOOLTHRS[i],  0x00007530, &status); 
@@ -224,54 +215,114 @@ void pen_motors_init()
 
         // Motor motion config
         for (i=0; i<2; i++) {
-                pen_set_motor_max_speed(i);
+                pen_set_motor_motion_params_max(i);
         }
 }
 
-void pen_set_motor_max_speed(int motor)
+void pen_set_motor_motion_params_max(int motor)
 {
         uint8_t status;
-        tmc5041_write_reg(tmc5041_A1[motor],       MAX_A1,       &status);
-        tmc5041_write_reg(tmc5041_V1[motor],       MAX_V1,       &status);
-        tmc5041_write_reg(tmc5041_AMAX[motor],     MAX_AMAX,     &status);
-        tmc5041_write_reg(tmc5041_VMAX[motor],     MAX_VMAX,     &status);
-        tmc5041_write_reg(tmc5041_DMAX[motor],     MAX_DMAX,     &status);
-        tmc5041_write_reg(tmc5041_D1[motor],       MAX_D1,       &status);
-        tmc5041_write_reg(tmc5041_VSTOP[motor],    MAX_VSTOP,    &status);
-        tmc5041_write_reg(tmc5041_RAMPMODE[motor], MAX_RAMPMODE, &status);      
+        tmc5041_write_reg(tmc5041_A1[motor],       MAX_A1,            &status);
+        tmc5041_write_reg(tmc5041_V1[motor],       MAX_V1,            &status);
+        tmc5041_write_reg(tmc5041_AMAX[motor],     MAX_AMAX,          &status);
+        tmc5041_write_reg(tmc5041_VMAX[motor],     MAX_VMAX,          &status);
+        tmc5041_write_reg(tmc5041_DMAX[motor],     MAX_DMAX,          &status);
+        tmc5041_write_reg(tmc5041_D1[motor],       MAX_D1,            &status);
+        tmc5041_write_reg(tmc5041_VSTOP[motor],    MAX_VSTOP,         &status);
+        tmc5041_write_reg(tmc5041_RAMPMODE[motor], RAMPMODE_POSITION, &status);      
 }
 
-void pen_set_motor_rel_speed(int motor, float32_t scale)
+struct int32_vec pen_get_position(void)
 {
-        int32_t val;
+        struct int32_vec pos;
+        uint8_t status;
+        pos.x = tmc5041_read_reg(tmc5041_XACTUAL[0], &status);
+        pos.y = tmc5041_read_reg(tmc5041_XACTUAL[1], &status);
+        return pos;
+}
+
+uint8_t pen_set_target_position(struct int32_vec target)
+{
+        struct int32_vec position = pen_get_position();
+        struct int32_vec distance = vec_subtract(target, position);
+        uint64_t distance_squared = vec_mag_squared(distance);
+        struct float32_vec velocity;
+
+        if (int_abs(distance.x) >= int_abs(distance.y)) {
+                if (distance.x > 0)
+                        velocity.x = 1.0f;
+                else
+                        velocity.x = -1.0f;
+                velocity.y = velocity.x * (float32_t)(distance.y/distance.x);
+        } else {
+                if (distance.y > 0)
+                        velocity.y = 1.0f;
+                else
+                        velocity.y = -1.0f;
+                velocity.x = velocity.y * (float32_t)(distance.x/distance.y);
+        }
+        
+        uint8_t status = pen_set_velocity(velocity);
+        return status;
+}
+
+// WIP
+uint8_t huh()
+{
+        if (pen_at_target()) {
+                if (queue_empty(&pen_position_queue)) {
+                        pen_stop();
+                } else {
+                        pen_set_position(queue_pop(&pen_position_queue))
+                }
+        }
+}
+
+// Set velocity yo some fraction of v_max between +/-1
+uint8_t pen_set_velocity(struct float32_vec velocity)
+{
         uint8_t status;
 
-        if (scale > 1) {
-                scale = 1;
-        }
+        // Ensure velocity x and y are between +/-1 
+        if (velocity.x > 1.0f)
+                velocity.x = 1.0f;
+        if (velocity.x < -1.0f)
+                velocity.x = -1.0f;
+        if (velocity.y > 1)
+                velocity.y = 1;
+        if (velocity.y < -1)
+                velocity.y = -1;
 
-        val = scale * MAX_A1;
-        tmc5041_write_reg(tmc5041_A1[motor],    val, &status);
-        val = scale * MAX_V1;
-        tmc5041_write_reg(tmc5041_V1[motor],    val, &status);
-        val = scale * MAX_AMAX;
-        tmc5041_write_reg(tmc5041_AMAX[motor],  val, &status);
-        val = scale * MAX_VMAX;
-        tmc5041_write_reg(tmc5041_VMAX[motor],  val, &status);
-        val = scale * MAX_DMAX;
-        tmc5041_write_reg(tmc5041_DMAX[motor],  val, &status);
-        val = scale * MAX_D1;
-        tmc5041_write_reg(tmc5041_D1[motor],    val, &status);
-        val = scale * MAX_VSTOP;
-        tmc5041_write_reg(tmc5041_VSTOP[motor], val, &status);
+        // Check whether velocity components are positive or negative
+        if (velocity.x >= 0) {
+                tmc5041_write_reg(tmc5041_RAMPMODE[0], RAMPMODE_VPOS, &status);
+        } else {
+                tmc5041_write_reg(tmc5041_RAMPMODE[0], RAMPMODE_VNEG, &status);
+                velocity.x = -1 * velocity.x;
+        }
+        if (velocity.y >= 0) {
+                tmc5041_write_reg(tmc5041_RAMPMODE[1], RAMPMODE_VPOS, &status);
+        } else {
+                tmc5041_write_reg(tmc5041_RAMPMODE[1], RAMPMODE_VNEG, &status);
+                velocity.y = -1 * velocity.y;
+        }
+        
+        // Slow motors for debug
+        float32_t scale = 0.1;
+
+        // Write motor velocity registers
+        uint32_t val;
+        val = velocity.x * MAX_VMAX * scale;
+        status |= tmc5041_write_reg(tmc5041_VMAX[0], val, &status);
+        val = velocity.y * MAX_VMAX * scale;
+        status |= tmc5041_write_reg(tmc5041_VMAX[1], val, &status);
+
+        return status;
 }
 
-int32_t int_abs(int32_t a)
+uint8_t pen_stop(void)
 {
-        if (a > 0) {
-                return a;
-        }
-        return -1*a;
+        uint8_t status = pen_set_velocity(struct float32_t {0.0f, 0.0f});
 }
 
 uint8_t pen_goto_motor_rotation(int32_t A, int32_t B)
@@ -304,6 +355,30 @@ uint8_t pen_goto_motor_rotation(int32_t A, int32_t B)
 
         return status;
 }
+
+void pen_set_motor_rel_speed(int motor, float32_t scale)
+{
+        int32_t val;
+        uint8_t status;
+
+        if (scale > 1) {
+                scale = 1;
+        }
+
+        val = scale * MAX_A1;
+        tmc5041_write_reg(tmc5041_A1[motor],    val, &status);
+        val = scale * MAX_V1;
+        tmc5041_write_reg(tmc5041_V1[motor],    val, &status);
+        val = scale * MAX_AMAX;
+        tmc5041_write_reg(tmc5041_AMAX[motor],  val, &status);
+        val = scale * MAX_VMAX;
+        tmc5041_write_reg(tmc5041_VMAX[motor],  val, &status);
+        val = scale * MAX_DMAX;
+        tmc5041_write_reg(tmc5041_DMAX[motor],  val, &status);
+        val = scale * MAX_D1;
+        tmc5041_write_reg(tmc5041_D1[motor],    val, &status);
+}
+
 
 void clock_init(void)
 {
