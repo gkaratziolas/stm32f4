@@ -72,7 +72,6 @@ def main():
 
 			if command == 0x03:
 				move_motors(ser, int(sys.argv[3]), int(sys.argv[4]))
-				read_serial(ser);
 				sys.exit()
 			send_command(ser, command)
 			sys.exit()
@@ -102,9 +101,8 @@ while (1):
 		move_motors(ser, x, y)
 		x_old = x
 		y_old = y
-	time.sleep(0.1)
 
 serial_deinit(ser)
 
-if __name__ == "__main__":
-	main()
+#if __name__ == "__main__":
+#	main()
