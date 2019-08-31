@@ -17,7 +17,7 @@
 // Default velocity curve values for tmc5041 motor driver
 #define MAX_A1         0x000013E8
 #define MAX_V1         0x0001c350
-#define MAX_AMAX       0x000011f4
+#define MAX_AMAX       0x0000FFFF
 #define MAX_VMAX       0x001304d0
 #define MAX_DMAX       0x000012bc
 #define MAX_D1         0x00001578
@@ -173,9 +173,12 @@ int main(void)
         usart_init();
         nvic_init();
         command_usart_bind(USART1);
+
         pen_motors_init();
 
         struct command_packet p;
+
+        GPIOD->ODR = 0x00;
 
         struct int32_vec start  = pen_get_position();
         struct int32_vec target = start;
@@ -183,10 +186,14 @@ int main(void)
         while (1) {
                 if (pen_motion_check_complete(start, target)) {
                         if (motion_fifo_check_empty()) {
+                                GPIOD->ODR &= ~(1<<13);
                                 pen_stop();
+                        } else {
+                                start = pen_get_position();
+                                motion_fifo_pop(&target);
+                                pen_set_target_position(target);
+                                GPIOD->ODR |= (1<<13);
                         }
-                        motion_fifo_pop(&target);
-                        pen_set_target_position(target);
                 }
                 if (command_usart_receive(&p)) {
                         handle_command(&p);
@@ -258,7 +265,6 @@ void handle_command(struct command_packet *p)
                            (uint32_t)(p->data[1]) <<  8 |
                            (uint32_t)(p->data[0]) << 0;
                 motion_fifo_push(&target);
-                GPIOD->ODR |=  (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15);
                 break;
         }
         // Confirm packet was correctly interpreted by returning copy
@@ -320,13 +326,13 @@ uint8_t pen_set_target_position(struct int32_vec target)
                         velocity.x = 1.0f;
                 else
                         velocity.x = -1.0f;
-                velocity.y = velocity.x * (float32_t)(distance.y/distance.x);
+                velocity.y = ((float32_t)distance.y * velocity.x) / (float32_t)distance.x;
         } else {
                 if (distance.y > 0)
                         velocity.y = 1.0f;
                 else
                         velocity.y = -1.0f;
-                velocity.x = velocity.y * (float32_t)(distance.x/distance.y);
+                velocity.x = ((float32_t)distance.x * velocity.y) / (float32_t)distance.y;
         }
         
         uint8_t status = pen_set_velocity(velocity);
