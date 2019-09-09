@@ -5,7 +5,7 @@
 #include "misc.h"
 
 // Included for fast floating point calculations
-#include "arm_math.h"
+#include "math_utils.h"
 
 #include "command_usart.h"
 
@@ -69,17 +69,6 @@ struct tmc5041_reply {
         uint32_t data;
 };
 
-// 2D vectors for (x,y) positions and velocities
-struct int32_vec {
-        int32_t x;
-        int32_t y;
-};
-
-struct float32_vec {
-        float32_t x;
-        float32_t y;
-};
-
 /* Function prototypes */
 // Peripheral Initialisation functions
 void clock_init(void);
@@ -98,12 +87,6 @@ void tmc5041_spi_transfer(struct tmc5041_command *command,
                           struct tmc5041_reply   *reply);
 void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
 uint32_t tmc5041_read_reg (uint8_t reg, uint8_t *status);
-
-// Maths functions
-int32_t int_abs(int32_t a);
-struct int32_vec vec_add(struct int32_vec A, struct int32_vec B);
-struct int32_vec vec_subtract(struct int32_vec A, struct int32_vec B);
-int64_t vec_mag_squared(struct int32_vec A);
 
 // Functions for moving pen head
 void pen_motors_init(void);
@@ -163,37 +146,6 @@ int main(void)
                         handle_command(&p);
                 }
         }
-}
-
-struct int32_vec vec_add(struct int32_vec A, struct int32_vec B)
-{
-        struct int32_vec C;
-        C.x = A.x + B.x;
-        C.y = A.y + B.y;
-        return C;
-}
-
-struct int32_vec vec_subtract(struct int32_vec A, struct int32_vec B)
-{
-        struct int32_vec C;
-        C.x = A.x - B.x;
-        C.y = A.y - B.y;
-        return C;
-}
-
-int64_t vec_mag_squared(struct int32_vec A)
-{
-        int64_t mag_squared;
-        mag_squared = (int64_t)A.x*(int64_t)A.x + (int64_t)A.y*(int64_t)A.y;
-        return mag_squared;
-}
-
-int32_t int_abs(int32_t a)
-{
-        if (a > 0) {
-                return a;
-        }
-        return -1*a;
 }
 
 void handle_command(struct command_packet *p)
@@ -282,7 +234,7 @@ struct int32_vec pen_get_position(void)
 uint8_t pen_set_target_position(struct int32_vec target)
 {
         struct int32_vec position = pen_get_position();
-        struct int32_vec distance = vec_subtract(target, position);
+        struct int32_vec distance = int32_vec_sub(&target, &position);
         struct float32_vec velocity;
 
         if (int_abs(distance.x) >= int_abs(distance.y)) {
@@ -307,12 +259,12 @@ uint32_t pen_motion_check_complete(struct int32_vec start, struct int32_vec end)
 {
         struct int32_vec position = pen_get_position();
 
-        struct int32_vec distance_start = vec_subtract(position, start);
-        struct int32_vec distance_end   = vec_subtract(position, end);
-        struct int32_vec start_end      = vec_subtract(end, start);
+        struct int32_vec distance_start = int32_vec_sub(&position, &start);
+        struct int32_vec distance_end   = int32_vec_sub(&position, &end);
+        struct int32_vec start_end      = int32_vec_sub(&end, &start);
 
-        if ((vec_mag_squared(distance_start) > vec_mag_squared(start_end)) |
-            (vec_mag_squared(distance_end)   < (int64_t)200000)) {
+        if ((int32_vec_mag_squared(&distance_start) > int32_vec_mag_squared(&start_end)) |
+            (int32_vec_mag_squared(&distance_end)   < (int64_t)200000)) {
                 return 1;
         }
         return 0;
