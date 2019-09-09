@@ -9,6 +9,7 @@
 
 #include "command_usart.h"
 
+/* Preprocessor defines and constants */
 // USART command codes
 #define COMMAND_RESET 0x01
 #define COMMAND_LED   0x02
@@ -56,6 +57,7 @@ const uint8_t tmc5041_PWMCONF[]    = {0x10, 0x18};
 
 const uint8_t tmc5041_RAMP_STAT[]  = {0x35, 0x55};
 
+/* Structs */
 // TMC5041 command structs
 struct tmc5041_command {
         uint8_t  reg;
@@ -78,24 +80,32 @@ struct float32_vec {
         float32_t y;
 };
 
+/* Function prototypes */
+// Peripheral Initialisation functions
 void clock_init(void);
 void io_init(void);
 void usart_init(void);
 void spi_init(void);
+void nvic_init(void);
 
+// GPIO commands - to be moved to a driver
 void gpio_set   (uint8_t pin, GPIO_TypeDef* port);
 void gpio_clear (uint8_t pin, GPIO_TypeDef* port);
 void gpio_toggle(uint8_t pin, GPIO_TypeDef* port);
 
+// TMC5041 motor controller reg read/write functions
+void tmc5041_spi_transfer(struct tmc5041_command *command,
+                          struct tmc5041_reply   *reply);
 void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
 uint32_t tmc5041_read_reg (uint8_t reg, uint8_t *status);
 
+// Maths functions
 int32_t int_abs(int32_t a);
-
 struct int32_vec vec_add(struct int32_vec A, struct int32_vec B);
 struct int32_vec vec_subtract(struct int32_vec A, struct int32_vec B);
 int64_t vec_mag_squared(struct int32_vec A);
 
+// Functions for moving pen head
 void pen_motors_init(void);
 void pen_set_motor_motion_params_max(int motor);
 uint8_t pen_set_velocity(struct float32_vec velocity);
@@ -104,11 +114,12 @@ uint8_t pen_set_target_position(struct int32_vec target);
 struct int32_vec pen_get_position(void);
 uint32_t pen_motion_check_complete(struct int32_vec start, struct int32_vec end);
 
-
+// Handler for incoming usart commands
 void handle_command(struct command_packet *p);
-void nvic_init(void);
 
-struct int32_vec motion_fifo[32];
+/* Functions and state variables for motion FIFO */
+#define MOTION_FIFO_DEPTH 32
+struct int32_vec motion_fifo[MOTION_FIFO_DEPTH];
 uint32_t motion_fifo_front = 0;
 uint32_t motion_fifo_back  = 0;
 uint32_t motion_fifo_full  = 0;
@@ -117,53 +128,6 @@ uint32_t motion_fifo_pop(struct int32_vec *target);
 uint32_t motion_fifo_peek(struct int32_vec *target);
 uint32_t motion_fifo_check_full(void);
 uint32_t motion_fifo_check_empty(void);
-
-uint32_t motion_fifo_push(struct int32_vec *target)
-{
-        if (motion_fifo_check_full()) {
-                return 0;
-        }
-        motion_fifo[motion_fifo_back].x = target->x;
-        motion_fifo[motion_fifo_back].y = target->y;
-        motion_fifo_back++;
-
-        if (motion_fifo_back == motion_fifo_front) {
-                motion_fifo_full = 1;
-        }
-        return 1;
-}
-
-uint32_t motion_fifo_pop(struct int32_vec *target)
-{
-        if (motion_fifo_check_empty()) {
-                return 0;
-        }
-        target->x = motion_fifo[motion_fifo_front].x;
-        target->y = motion_fifo[motion_fifo_front].y;
-        motion_fifo_front++;
-        motion_fifo_full = 0;
-        return 1;
-}
-
-uint32_t motion_fifo_peek(struct int32_vec *target)
-{
-        if (motion_fifo_check_empty()) {
-                return 0;
-        }
-        target->x = motion_fifo[motion_fifo_front].x;
-        target->y = motion_fifo[motion_fifo_front].y;
-        return 1;
-}
-
-uint32_t motion_fifo_check_full(void)
-{
-        return motion_fifo_full;
-}
-
-uint32_t motion_fifo_check_empty(void)
-{
-        return (!motion_fifo_full) && (motion_fifo_front == motion_fifo_back);
-}
 
 int main(void)
 {
@@ -259,11 +223,11 @@ void handle_command(struct command_packet *p)
                 target.y = (uint32_t)(p->data[7]) << 24 |
                            (uint32_t)(p->data[6]) << 16 |
                            (uint32_t)(p->data[5]) <<  8 |
-                           (uint32_t)(p->data[4]) << 0;
+                           (uint32_t)(p->data[4]) <<  0;
                 target.x = (uint32_t)(p->data[3]) << 24 |
                            (uint32_t)(p->data[2]) << 16 |
                            (uint32_t)(p->data[1]) <<  8 |
-                           (uint32_t)(p->data[0]) << 0;
+                           (uint32_t)(p->data[0]) <<  0;
                 motion_fifo_push(&target);
                 break;
         }
@@ -504,8 +468,7 @@ void spi_init(void)
 }
 
 void tmc5041_spi_transfer(struct tmc5041_command *command,
-                          struct tmc5041_reply   *reply
-                          )
+                          struct tmc5041_reply   *reply)
 {
         // Dummy read to clear RX buff
         uint8_t dummy = SPI1->DR;
@@ -614,4 +577,52 @@ void nvic_init(void) {
         NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
         NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
         NVIC_Init(&NVIC_InitStructure);
+}
+
+
+uint32_t motion_fifo_push(struct int32_vec *target)
+{
+        if (motion_fifo_check_full()) {
+                return 0;
+        }
+        motion_fifo[motion_fifo_back].x = target->x;
+        motion_fifo[motion_fifo_back].y = target->y;
+        motion_fifo_back++;
+
+        if (motion_fifo_back == motion_fifo_front) {
+                motion_fifo_full = 1;
+        }
+        return 1;
+}
+
+uint32_t motion_fifo_pop(struct int32_vec *target)
+{
+        if (motion_fifo_check_empty()) {
+                return 0;
+        }
+        target->x = motion_fifo[motion_fifo_front].x;
+        target->y = motion_fifo[motion_fifo_front].y;
+        motion_fifo_front++;
+        motion_fifo_full = 0;
+        return 1;
+}
+
+uint32_t motion_fifo_peek(struct int32_vec *target)
+{
+        if (motion_fifo_check_empty()) {
+                return 0;
+        }
+        target->x = motion_fifo[motion_fifo_front].x;
+        target->y = motion_fifo[motion_fifo_front].y;
+        return 1;
+}
+
+uint32_t motion_fifo_check_full(void)
+{
+        return motion_fifo_full;
+}
+
+uint32_t motion_fifo_check_empty(void)
+{
+        return (!motion_fifo_full) && (motion_fifo_front == motion_fifo_back);
 }
