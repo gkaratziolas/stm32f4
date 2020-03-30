@@ -8,6 +8,7 @@
 #include "math_utils.h"
 
 #include "command_usart.h"
+#include "debug_usart.h"
 
 /* Preprocessor defines and constants */
 // USART command codes
@@ -52,10 +53,14 @@ const uint8_t tmc5041_VCOOLTHRS[]  = {0x31, 0x51};
 
 const uint8_t tmc5041_VHIGH[]      = {0x32, 0x52};
 
-const uint8_t tmc5041_CHOPCONF[]   = {0x6c, 0x7c};
+const uint8_t tmc5041_SW_MODE[]    = {0x34, 0x54};
+
 const uint8_t tmc5041_PWMCONF[]    = {0x10, 0x18};
+const uint8_t tmc5041_CHOPCONF[]   = {0x6c, 0x7c};
+const uint8_t tmc5041_COOLCONF[]   = {0x6d, 0x7d};
 
 const uint8_t tmc5041_RAMP_STAT[]  = {0x35, 0x55};
+const uint8_t tmc5041_DRV_STATUS[] = {0x6F, 0x7F};
 
 /* Structs */
 // TMC5041 command structs
@@ -87,6 +92,9 @@ void tmc5041_spi_transfer(struct tmc5041_command *command,
                           struct tmc5041_reply   *reply);
 void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
 uint32_t tmc5041_read_reg (uint8_t reg, uint8_t *status);
+uint32_t tmc5041_mask_reg(uint8_t reg, uint32_t mask, uint8_t *status);
+void tmc5041_set_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status);
+void tmc5041_reset_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status);
 
 // Functions for moving pen head
 void pen_motors_init(void);
@@ -118,8 +126,9 @@ int main(void)
         io_init();
         spi_init();
         usart_init();
-        nvic_init();
-        command_usart_bind(USART1);
+        //nvic_init();
+        //command_usart_bind(USART1);
+        debug_usart_bind(USART1);
 
         pen_motors_init();
 
@@ -130,7 +139,21 @@ int main(void)
         struct int32_vec start  = pen_get_position();
         struct int32_vec target = start;
 
+        char buf[64];
+        uint32_t sg_result_0, sg_result_1;
+
+        target.x = 10000000;
+        target.y = 10000000;
+        pen_set_target_position(target);
+        uint8_t status;
         while (1) {
+                sg_result_0 = tmc5041_read_reg(tmc5041_DRV_STATUS[0], &status) & 0x3FF;
+                sg_result_1 = tmc5041_read_reg(tmc5041_DRV_STATUS[1], &status) & 0x3FF;
+
+                sprintf(buf, "sg0: %lu; sg1: %lu\n", sg_result_0, sg_result_1);
+                if ((sg_result_0 | sg_result_1) != 0)
+                        debug_usart_print(buf);
+
                 if (pen_motion_check_complete(start, target)) {
                         if (motion_fifo_check_empty()) {
                                 GPIOD->ODR &= ~(1<<13);
@@ -200,7 +223,17 @@ void pen_motors_init()
                 tmc5041_write_reg(tmc5041_TZEROWAIT[i],  0x00000000, &status);
                 tmc5041_write_reg(tmc5041_PWMCONF[i],    0x000401c8, &status);
                 tmc5041_write_reg(tmc5041_VHIGH[i],      0x00061a80, &status);
-                tmc5041_write_reg(tmc5041_VCOOLTHRS[i],  0x00007530, &status); 
+                tmc5041_write_reg(tmc5041_VCOOLTHRS[i],  0x00007530, &status);
+
+                // enable stallGuard2 stop
+                //tmc5041_set_reg_bit(tmc5041_SW_MODE[i], 10, &status);
+                // disable stallGuard2 filter
+                //tmc5041_mask_reg(tmc5041_SW_MODE[i], ~(1<<24), &status);
+                // set stallGuard2 threshold
+                uint32_t data = tmc5041_read_reg(tmc5041_COOLCONF, &status);
+                data = (data & 0xff00ffff) | (0x1 << 16);
+                tmc5041_write_reg(tmc5041_COOLCONF, data, &status);
+                //tmc5041_mask_reg(tmc5041_COOLCONF[i], (0x40<<16), &status);
         }
 
         // Motor motion config
@@ -500,6 +533,27 @@ uint32_t tmc5041_read_reg(uint8_t reg, uint8_t *status)
 
         *status = reply.status;
         return reply.data;
+}
+
+uint32_t tmc5041_mask_reg(uint8_t reg, uint32_t mask, uint8_t *status)
+{
+        uint32_t data = tmc5041_read_reg(reg, status);
+        data &= mask;
+        tmc5041_write_reg(reg, data, status);
+}
+
+void tmc5041_set_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status)
+{
+        uint32_t data = tmc5041_read_reg(reg, status);
+        data |= (1 << bit);
+        tmc5041_write_reg(reg, data, status);      
+}
+
+void tmc5041_reset_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status)
+{
+        uint32_t data = tmc5041_read_reg(reg, status);
+        data &= ~(1 << bit);
+        tmc5041_write_reg(reg, data, status);      
 }
 
 void usart_init(void)
