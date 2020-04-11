@@ -1,8 +1,8 @@
 # Put your source files here (or *.c, etc)
-SRCS=main.c ../../common/src/*.c ../../drivers/src/*.c
+SRCS=main.c math_utils.c ../../common/src/*.c ../../drivers/src/*.c
 
 # Library modules
-SRCS += stm32f4xx_gpio.c stm32f4xx_rcc.c stm32f4xx_usart.c
+SRCS += stm32f4xx_gpio.c stm32f4xx_rcc.c stm32f4xx_usart.c misc.c
 
 # Binaries will be generated with this name (.elf, .bin, .hex, etc)
 PROJ_NAME=pen_plotter
@@ -26,6 +26,7 @@ CFLAGS += -I../../common/include
 CFLAGS += -I../../drivers/include
 
 # Include files from STM libraries
+CFLAGS += -I.
 CFLAGS += -I$(STM_COMMON)/Utilities/STM32F4-Discovery
 CFLAGS += -I$(STM_COMMON)/Libraries/CMSIS/Include
 CFLAGS += -I$(STM_COMMON)/Libraries/CMSIS/ST/STM32F4xx/Include

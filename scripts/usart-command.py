@@ -12,7 +12,7 @@ STARTB = 0x34;
 
 def serial_init(port):
 	try:
-		ser = serial.Serial(port, BAUD_RATE)
+		ser = serial.Serial(port, BAUD_RATE, timeout=1)
 		print("connected to port {}".format(ser.name))
 		return ser
 	except serial.serialutil.SerialException:
@@ -30,6 +30,15 @@ def send_command(ser, command = 0x00):
 	ser.write((0x00).to_bytes(1, "little"))
 	ser.write((0x0f).to_bytes(1, "little"))
 
+def move_motors(ser, x, y):
+	ser.write((STARTA).to_bytes(1, "little"))
+	ser.write((STARTB).to_bytes(1, "little"))
+	ser.write((0x03).to_bytes(1, "little"))
+	ser.write((0x08).to_bytes(1, "little"))
+	ser.write((x).to_bytes(4, "little", signed=True))
+	ser.write((y).to_bytes(4, "little", signed=True))
+	ser.write((0x0f).to_bytes(1, "little"))
+
 def leds_on(ser, led0, led1, led2, led3):
 	ser.write((STARTA).to_bytes(1, "little"))
 	ser.write((STARTB).to_bytes(1, "little"))
@@ -41,7 +50,14 @@ def leds_on(ser, led0, led1, led2, led3):
 	ser.write((led3).to_bytes(1, "little"))
 	ser.write((0x0f).to_bytes(1, "little"))
 
-if __name__ == "__main__":
+def read_serial(ser):
+	x = ser.read(1)
+	while(x != b''):
+		print(x)
+		x = ser.read(1)
+	print("")
+
+def main():
 	if len(sys.argv) < 2:
 		print("error: please specify serial port.")
 		sys.exit(1)
@@ -53,6 +69,10 @@ if __name__ == "__main__":
 		command = sys.argv[2]
 		try:
 			command = int(command, 16)
+
+			if command == 0x03:
+				move_motors(ser, int(sys.argv[3]), int(sys.argv[4]))
+				sys.exit()
 			send_command(ser, command)
 			sys.exit()
 		except ValueError:
@@ -63,5 +83,26 @@ if __name__ == "__main__":
 
 	while(1):
 		leds_on(ser, random.randint(0,1), random.randint(0,1), random.randint(0,1), random.randint(0,1))
+		read_serial(ser)
 		time.sleep(0.1)
 	serial_deinit(ser)
+
+from Xlib import display
+
+ser = serial_init("/dev/ttyUSB0")
+x_old = 0
+y_old = 0
+while (1):
+	data = display.Display().screen().root.query_pointer()._data
+	x = data["root_x"]*100
+	y = data["root_y"]*100
+
+	if x_old != x or y_old != y:
+		move_motors(ser, x, y)
+		x_old = x
+		y_old = y
+
+serial_deinit(ser)
+
+#if __name__ == "__main__":
+#	main()
