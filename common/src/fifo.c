@@ -33,7 +33,7 @@ int fifo_push(struct fifo *f, void *data)
         if (fifo_full(f))
                 return -1;
 
-        memcpy((void *)(&(f->array[f->back])), data, f->element_size);
+        memcpy(f->array + (f->back * f->element_size), data, f->element_size);
         f->back++;
 
         if (f->back == f->front)
@@ -47,7 +47,7 @@ int fifo_pop(struct fifo *f, void *data)
         if (fifo_empty(f))
                 return -1;
         
-        memcpy(data, (void *)(&(f->array[f->front])), f->element_size);
+        memcpy(data, f->array + (f->front * f->element_size), f->element_size);
         
         f->front++;
         f->full = 0;
@@ -59,7 +59,7 @@ int fifo_peek(struct fifo *f, void *data)
         if (fifo_empty(f))
                 return -1;
 
-        memcpy(data, (void *)(&(f->array[f->front])), f->element_size);
+        memcpy(data, f->array + (f->front * f->element_size), f->element_size);
         return 0;
 }
 
