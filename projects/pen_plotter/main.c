@@ -9,6 +9,9 @@
 
 #include "command_usart.h"
 #include "debug_usart.h"
+#include "pen_plotter.h"
+#include "gpio.h"
+#include "fifo.h"
 
 /* Preprocessor defines and constants */
 // USART command codes
@@ -16,63 +19,9 @@
 #define COMMAND_LED   0x02
 #define COMMAND_MOVE  0x03
 
-// Default velocity curve values for tmc5041 motor driver
-#define MAX_A1         0x000013E8
-#define MAX_V1         0x0001c350
-#define MAX_AMAX       0x0000FFFF
-#define MAX_VMAX       0x001304d0
-#define MAX_DMAX       0x000012bc
-#define MAX_D1         0x00001578
-#define MAX_VSTOP      0x0000000A
-
-#define RAMPMODE_POSITION 0x00000000
-#define RAMPMODE_VPOS     0x00000001
-#define RAMPMODE_VNEG     0x00000002
-#define RAMPMODE_HOLD     0x00000003
-
-// TMC5041 register addresses
-const uint8_t tmc5041_GCONF        = 0x00;
-const uint8_t tmc5041_GSTAT        = 0x01;
-
-const uint8_t tmc5041_RAMPMODE[]   = {0x20, 0x40};
-const uint8_t tmc5041_XACTUAL[]    = {0x21, 0x41};
-
-const uint8_t tmc5041_A1[]         = {0x24, 0x44};
-const uint8_t tmc5041_V1[]         = {0x25, 0x45};
-const uint8_t tmc5041_D1[]         = {0x2a, 0x4a};
-const uint8_t tmc5041_AMAX[]       = {0x26, 0x46};
-const uint8_t tmc5041_VMAX[]       = {0x27, 0x47};
-const uint8_t tmc5041_DMAX[]       = {0x28, 0x48};
-
-const uint8_t tmc5041_VSTOP[]      = {0x2b, 0x4b};
-const uint8_t tmc5041_TZEROWAIT[]  = {0x2c, 0x4c};
-const uint8_t tmc5041_XTARGET[]    = {0x2d, 0x4d};
-
-const uint8_t tmc5041_IHOLD_IRUN[] = {0x30, 0x50};
-const uint8_t tmc5041_VCOOLTHRS[]  = {0x31, 0x51};
-
-const uint8_t tmc5041_VHIGH[]      = {0x32, 0x52};
-
-const uint8_t tmc5041_SW_MODE[]    = {0x34, 0x54};
-
-const uint8_t tmc5041_PWMCONF[]    = {0x10, 0x18};
-const uint8_t tmc5041_CHOPCONF[]   = {0x6c, 0x7c};
-const uint8_t tmc5041_COOLCONF[]   = {0x6d, 0x7d};
-
-const uint8_t tmc5041_RAMP_STAT[]  = {0x35, 0x55};
-const uint8_t tmc5041_DRV_STATUS[] = {0x6F, 0x7F};
-
-/* Structs */
-// TMC5041 command structs
-struct tmc5041_command {
-        uint8_t  reg;
-        uint32_t data;
-};
-
-struct tmc5041_reply {
-        uint8_t  status;
-        uint32_t data;
-};
+#define MOTION_FIFO_LENGTH 10
+struct int32_vec motion_fifo_array[MOTION_FIFO_LENGTH];
+struct fifo motion_fifo;
 
 /* Function prototypes */
 // Peripheral Initialisation functions
@@ -82,43 +31,8 @@ void usart_init(void);
 void spi_init(void);
 void nvic_init(void);
 
-// GPIO commands - to be moved to a driver
-void gpio_set   (uint8_t pin, GPIO_TypeDef* port);
-void gpio_clear (uint8_t pin, GPIO_TypeDef* port);
-void gpio_toggle(uint8_t pin, GPIO_TypeDef* port);
-
-// TMC5041 motor controller reg read/write functions
-void tmc5041_spi_transfer(struct tmc5041_command *command,
-                          struct tmc5041_reply   *reply);
-void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
-uint32_t tmc5041_read_reg (uint8_t reg, uint8_t *status);
-uint32_t tmc5041_mask_reg(uint8_t reg, uint32_t mask, uint8_t *status);
-void tmc5041_set_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status);
-void tmc5041_reset_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status);
-
-// Functions for moving pen head
-void pen_motors_init(void);
-void pen_set_motor_motion_params_max(int motor);
-uint8_t pen_set_velocity(struct float32_vec velocity);
-uint8_t pen_stop(void);
-uint8_t pen_set_target_position(struct int32_vec target);
-struct int32_vec pen_get_position(void);
-uint32_t pen_motion_check_complete(struct int32_vec start, struct int32_vec end);
-
 // Handler for incoming usart commands
 void handle_command(struct command_packet *p);
-
-/* Functions and state variables for motion FIFO */
-#define MOTION_FIFO_DEPTH 32
-struct int32_vec motion_fifo[MOTION_FIFO_DEPTH];
-uint32_t motion_fifo_front = 0;
-uint32_t motion_fifo_back  = 0;
-uint32_t motion_fifo_full  = 0;
-uint32_t motion_fifo_push(struct int32_vec *target);
-uint32_t motion_fifo_pop(struct int32_vec *target);
-uint32_t motion_fifo_peek(struct int32_vec *target);
-uint32_t motion_fifo_check_full(void);
-uint32_t motion_fifo_check_empty(void);
 
 int main(void)
 {
@@ -126,11 +40,15 @@ int main(void)
         io_init();
         spi_init();
         usart_init();
-        //nvic_init();
-        //command_usart_bind(USART1);
+        nvic_init();
+        command_usart_bind(USART1);
         debug_usart_bind(USART1);
 
         pen_motors_init();
+
+        motion_fifo = fifo_init(motion_fifo_array,
+                                sizeof(motion_fifo_array[0]),
+                                MOTION_FIFO_LENGTH);
 
         struct command_packet p;
 
@@ -138,29 +56,18 @@ int main(void)
 
         struct int32_vec start  = pen_get_position();
         struct int32_vec target = start;
-
-        char buf[64];
-        uint32_t sg_result_0, sg_result_1;
-
+        
         target.x = 10000000;
         target.y = 10000000;
         pen_set_target_position(target);
-        uint8_t status;
         while (1) {
-                sg_result_0 = tmc5041_read_reg(tmc5041_DRV_STATUS[0], &status) & 0x3FF;
-                sg_result_1 = tmc5041_read_reg(tmc5041_DRV_STATUS[1], &status) & 0x3FF;
-
-                sprintf(buf, "sg0: %lu; sg1: %lu\n", sg_result_0, sg_result_1);
-                if ((sg_result_0 | sg_result_1) != 0)
-                        debug_usart_print(buf);
-
                 if (pen_motion_check_complete(start, target)) {
-                        if (motion_fifo_check_empty()) {
+                        if (fifo_empty(&motion_fifo)) {
                                 GPIOD->ODR &= ~(1<<13);
                                 pen_stop();
                         } else {
                                 start = pen_get_position();
-                                motion_fifo_pop(&target);
+                                fifo_pop(&motion_fifo, (void *) &target);
                                 pen_set_target_position(target);
                                 GPIOD->ODR |= (1<<13);
                         }
@@ -203,154 +110,11 @@ void handle_command(struct command_packet *p)
                            (uint32_t)(p->data[2]) << 16 |
                            (uint32_t)(p->data[1]) <<  8 |
                            (uint32_t)(p->data[0]) <<  0;
-                motion_fifo_push(&target);
+                fifo_push(&motion_fifo, (void *) &target);
                 break;
         }
         // Confirm packet was correctly interpreted by returning copy
         command_usart_transmit(p);
-}
-
-void pen_motors_init()
-{
-        int i;
-        uint8_t status;
-        tmc5041_write_reg(tmc5041_GCONF, 0x00000008, &status);
-
-        // Initial motor config
-        for (i=0; i<2; i++) {
-                tmc5041_write_reg(tmc5041_CHOPCONF[i],   0x000100c5, &status);
-                tmc5041_write_reg(tmc5041_IHOLD_IRUN[i], 0x00011f05, &status);
-                tmc5041_write_reg(tmc5041_TZEROWAIT[i],  0x00000000, &status);
-                tmc5041_write_reg(tmc5041_PWMCONF[i],    0x000401c8, &status);
-                tmc5041_write_reg(tmc5041_VHIGH[i],      0x00061a80, &status);
-                tmc5041_write_reg(tmc5041_VCOOLTHRS[i],  0x00007530, &status);
-
-                // enable stallGuard2 stop
-                //tmc5041_set_reg_bit(tmc5041_SW_MODE[i], 10, &status);
-                // disable stallGuard2 filter
-                //tmc5041_mask_reg(tmc5041_SW_MODE[i], ~(1<<24), &status);
-                // set stallGuard2 threshold
-                uint32_t data = tmc5041_read_reg(tmc5041_COOLCONF, &status);
-                data = (data & 0xff00ffff) | (0x1 << 16);
-                tmc5041_write_reg(tmc5041_COOLCONF, data, &status);
-                //tmc5041_mask_reg(tmc5041_COOLCONF[i], (0x40<<16), &status);
-        }
-
-        // Motor motion config
-        for (i=0; i<2; i++) {
-                pen_set_motor_motion_params_max(i);
-        }
-}
-
-void pen_set_motor_motion_params_max(int motor)
-{
-        uint8_t status;
-        tmc5041_write_reg(tmc5041_A1[motor],       MAX_A1,            &status);
-        tmc5041_write_reg(tmc5041_V1[motor],       MAX_V1,            &status);
-        tmc5041_write_reg(tmc5041_AMAX[motor],     MAX_AMAX,          &status);
-        tmc5041_write_reg(tmc5041_VMAX[motor],     MAX_VMAX,          &status);
-        tmc5041_write_reg(tmc5041_DMAX[motor],     MAX_DMAX,          &status);
-        tmc5041_write_reg(tmc5041_D1[motor],       MAX_D1,            &status);
-        tmc5041_write_reg(tmc5041_VSTOP[motor],    MAX_VSTOP,         &status);
-        tmc5041_write_reg(tmc5041_RAMPMODE[motor], RAMPMODE_POSITION, &status);      
-}
-
-struct int32_vec pen_get_position(void)
-{
-        struct int32_vec pos;
-        uint8_t status;
-        pos.x = tmc5041_read_reg(tmc5041_XACTUAL[0], &status);
-        pos.y = tmc5041_read_reg(tmc5041_XACTUAL[1], &status);
-        return pos;
-}
-
-uint8_t pen_set_target_position(struct int32_vec target)
-{
-        struct int32_vec position = pen_get_position();
-        struct int32_vec distance = int32_vec_sub(&target, &position);
-        struct float32_vec velocity;
-
-        if (int_abs(distance.x) >= int_abs(distance.y)) {
-                if (distance.x > 0)
-                        velocity.x = 1.0f;
-                else
-                        velocity.x = -1.0f;
-                velocity.y = ((float32_t)distance.y * velocity.x) / (float32_t)distance.x;
-        } else {
-                if (distance.y > 0)
-                        velocity.y = 1.0f;
-                else
-                        velocity.y = -1.0f;
-                velocity.x = ((float32_t)distance.x * velocity.y) / (float32_t)distance.y;
-        }
-        
-        uint8_t status = pen_set_velocity(velocity);
-        return status;
-}
-
-uint32_t pen_motion_check_complete(struct int32_vec start, struct int32_vec end)
-{
-        struct int32_vec position = pen_get_position();
-
-        struct int32_vec distance_start = int32_vec_sub(&position, &start);
-        struct int32_vec distance_end   = int32_vec_sub(&position, &end);
-        struct int32_vec start_end      = int32_vec_sub(&end, &start);
-
-        if ((int32_vec_mag_squared(&distance_start) > int32_vec_mag_squared(&start_end)) |
-            (int32_vec_mag_squared(&distance_end)   < (int64_t)200000)) {
-                return 1;
-        }
-        return 0;
-}
-
-// Set velocity yo some fraction of v_max between +/-1
-uint8_t pen_set_velocity(struct float32_vec velocity)
-{
-        uint8_t status;
-
-        // Ensure velocity x and y are between +/-1 
-        if (velocity.x > 1.0f)
-                velocity.x = 1.0f;
-        if (velocity.x < -1.0f)
-                velocity.x = -1.0f;
-        if (velocity.y > 1)
-                velocity.y = 1;
-        if (velocity.y < -1)
-                velocity.y = -1;
-
-        // Check whether velocity components are positive or negative
-        if (velocity.x >= 0) {
-                tmc5041_write_reg(tmc5041_RAMPMODE[0], RAMPMODE_VPOS, &status);
-        } else {
-                tmc5041_write_reg(tmc5041_RAMPMODE[0], RAMPMODE_VNEG, &status);
-                velocity.x = -1 * velocity.x;
-        }
-        if (velocity.y >= 0) {
-                tmc5041_write_reg(tmc5041_RAMPMODE[1], RAMPMODE_VPOS, &status);
-        } else {
-                tmc5041_write_reg(tmc5041_RAMPMODE[1], RAMPMODE_VNEG, &status);
-                velocity.y = -1 * velocity.y;
-        }
-        
-        // Slow motors for debug
-        float32_t scale = 0.1;
-
-        // Write motor velocity registers
-        uint32_t val;
-        val = velocity.x * MAX_VMAX * scale;
-        tmc5041_write_reg(tmc5041_VMAX[0], val, &status);
-        val = velocity.y * MAX_VMAX * scale;
-        tmc5041_write_reg(tmc5041_VMAX[1], val, &status);
-
-        return status;
-}
-
-uint8_t pen_stop(void)
-{
-        struct float32_vec speed;
-        speed.x = 0.0f;
-        speed.y = 0.0f;
-        uint8_t status = pen_set_velocity(speed);
 }
 
 void clock_init(void)
@@ -414,21 +178,6 @@ void io_init(void)
         GPIO_Init(GPIOD, &GPIO_InitDef);
 }
 
-void gpio_set(uint8_t pin, GPIO_TypeDef* port)
-{
-        port->ODR |= (1<<pin);
-}
-
-void gpio_clear(uint8_t pin, GPIO_TypeDef* port)
-{
-        port->ODR &= ~(1<<pin);
-}
-
-void gpio_toggle(uint8_t pin, GPIO_TypeDef* port)
-{
-        port->ODR ^= (1<<pin);
-}
-
 void spi_init(void)
 {
         // TODO: Need to configure APB2 first
@@ -450,110 +199,6 @@ void spi_init(void)
 
         // Enable SPI1
         SPI1->CR1 |= SPI_CR1_SPE;
-}
-
-void tmc5041_spi_transfer(struct tmc5041_command *command,
-                          struct tmc5041_reply   *reply)
-{
-        // Dummy read to clear RX buff
-        uint8_t dummy = SPI1->DR;
-
-        // Set nSS low (SPI active)
-        gpio_clear(4, GPIOA);
-
-        // Wait for SPI1 to become available
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-
-        // Transfer first bit
-        SPI1->DR = command->reg;
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        // Wait for RX data and read
-        while(!(SPI1->SR & SPI_SR_RXNE)) {__asm("nop");}
-        reply->status = SPI1->DR;
-
-        // Exchange data[31:24]
-        SPI1->DR = ((command->data & 0xff000000) >> 24);
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        // Wait for RX data and read
-        while(!(SPI1->SR & SPI_SR_RXNE)) {__asm("nop");}
-        reply->data = ((uint32_t)SPI1->DR) << 24;
-
-        // Exchange data[23:16]
-        SPI1->DR = ((command->data & 0x00ff0000) >> 16);
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        // Wait for RX data and read
-        while(!(SPI1->SR & SPI_SR_RXNE)) {__asm("nop");}
-        reply->data |= ((uint32_t)SPI1->DR) << 16;
-
-        // Exchange data[15:8]
-        SPI1->DR = ((command->data & 0x0000ff00) >> 8);
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        // Wait for RX data and read
-        while(!(SPI1->SR & SPI_SR_RXNE)) {__asm("nop");}
-        reply->data |= ((uint32_t)SPI1->DR) << 8;
-
-        // Exchange data[7:0]
-        SPI1->DR = ((command->data & 0x000000ff) >> 0);
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        while(SPI1->SR & SPI_SR_BSY) {__asm("nop");}
-        // Wait for RX data and read
-        while(!(SPI1->SR & SPI_SR_RXNE)) {__asm("nop");}
-        reply->status |= (uint32_t)SPI1->DR;
-
-        // Set nSS high (SPI inactive)
-        gpio_set(4, GPIOA);
-}
-
-void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status)
-{
-
-        struct tmc5041_command command = {
-                .reg  = reg + 0x80,
-                .data = data
-        };
-        struct tmc5041_reply dummy;
-        tmc5041_spi_transfer(&command, &dummy);
-        *status = dummy.status;
-}
-
-uint32_t tmc5041_read_reg(uint8_t reg, uint8_t *status)
-{
-        struct tmc5041_command command = {
-                .reg  = reg,
-                .data = 0x00000000
-        };
-        struct tmc5041_reply reply;
-        tmc5041_spi_transfer(&command, &reply);
-        tmc5041_spi_transfer(&command, &reply);
-
-        *status = reply.status;
-        return reply.data;
-}
-
-uint32_t tmc5041_mask_reg(uint8_t reg, uint32_t mask, uint8_t *status)
-{
-        uint32_t data = tmc5041_read_reg(reg, status);
-        data &= mask;
-        tmc5041_write_reg(reg, data, status);
-}
-
-void tmc5041_set_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status)
-{
-        uint32_t data = tmc5041_read_reg(reg, status);
-        data |= (1 << bit);
-        tmc5041_write_reg(reg, data, status);      
-}
-
-void tmc5041_reset_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status)
-{
-        uint32_t data = tmc5041_read_reg(reg, status);
-        data &= ~(1 << bit);
-        tmc5041_write_reg(reg, data, status);      
 }
 
 void usart_init(void)
@@ -583,52 +228,4 @@ void nvic_init(void) {
         NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
         NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
         NVIC_Init(&NVIC_InitStructure);
-}
-
-
-uint32_t motion_fifo_push(struct int32_vec *target)
-{
-        if (motion_fifo_check_full()) {
-                return 0;
-        }
-        motion_fifo[motion_fifo_back].x = target->x;
-        motion_fifo[motion_fifo_back].y = target->y;
-        motion_fifo_back++;
-
-        if (motion_fifo_back == motion_fifo_front) {
-                motion_fifo_full = 1;
-        }
-        return 1;
-}
-
-uint32_t motion_fifo_pop(struct int32_vec *target)
-{
-        if (motion_fifo_check_empty()) {
-                return 0;
-        }
-        target->x = motion_fifo[motion_fifo_front].x;
-        target->y = motion_fifo[motion_fifo_front].y;
-        motion_fifo_front++;
-        motion_fifo_full = 0;
-        return 1;
-}
-
-uint32_t motion_fifo_peek(struct int32_vec *target)
-{
-        if (motion_fifo_check_empty()) {
-                return 0;
-        }
-        target->x = motion_fifo[motion_fifo_front].x;
-        target->y = motion_fifo[motion_fifo_front].y;
-        return 1;
-}
-
-uint32_t motion_fifo_check_full(void)
-{
-        return motion_fifo_full;
-}
-
-uint32_t motion_fifo_check_empty(void)
-{
-        return (!motion_fifo_full) && (motion_fifo_front == motion_fifo_back);
 }

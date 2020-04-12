@@ -8,7 +8,8 @@ void SysTick_Handler(void)
         uptime_ms++;
 }
 
-void system_uptime_ms_init(){
+void system_uptime_ms_init()
+{
         SysTick_Config(SystemCoreClock / 1000);
 }
 
