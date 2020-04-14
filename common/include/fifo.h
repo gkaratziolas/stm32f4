@@ -4,12 +4,12 @@
 #include <stdio.h>
 
 struct fifo {
-    void *array;
-    int element_size;
-    int length;
-    int front;
-    int back;
-    int full;
+        void *array;
+        int element_size;
+        int length;
+        int front;
+        int back;
+        int full;
 };
 
 struct fifo fifo_init(void *array, size_t element_size, int length);
