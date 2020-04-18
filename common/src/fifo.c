@@ -8,7 +8,7 @@
  * array of the wanted length must be passed to this function. e.g.
  * #define LEN 100;
  * int array[LEN];
- * stuct fifo my_fifo = fifo_init(&(array[0]), sizeof(int), LEN);
+ * stuct fifo my_fifo = fifo_init(array, sizeof(int), LEN);
  */
 struct fifo fifo_init(void *array, size_t element_size, int length)
 {
@@ -31,7 +31,7 @@ struct fifo fifo_init(void *array, size_t element_size, int length)
 int fifo_push(struct fifo *f, void *data)
 {
         if (fifo_full(f))
-                return -1;
+                return FIFO_ERR_FULL;
 
         memcpy(f->array + (f->back * f->element_size), data, f->element_size);
 
@@ -42,13 +42,13 @@ int fifo_push(struct fifo *f, void *data)
         if (f->back == f->front)
                 f->full = 1;
 
-        return 0;
+        return FIFO_OK;
 }
 
 int fifo_pop(struct fifo *f, void *data)
 {
         if (fifo_empty(f))
-                return -1;
+                return FIFO_ERR_EMPTY;
         
         memcpy(data, f->array + (f->front * f->element_size), f->element_size);
         
@@ -57,16 +57,16 @@ int fifo_pop(struct fifo *f, void *data)
                 f->front = 0;
 
         f->full = 0;
-        return 0;
+        return FIFO_OK;
 }
 
 int fifo_peek(struct fifo *f, void *data)
 {
         if (fifo_empty(f))
-                return -1;
+                return FIFO_ERR_EMPTY;
 
         memcpy(data, f->array + (f->front * f->element_size), f->element_size);
-        return 0;
+        return FIFO_OK;
 }
 
 int fifo_full(struct fifo *f)
@@ -77,4 +77,13 @@ int fifo_full(struct fifo *f)
 int fifo_empty(struct fifo *f)
 {
         return ((!f->full) && (f->front == f->back));
+}
+
+int fifo_space(struct fifo *f)
+{
+        if (fifo_empty(f))
+                return f->length;
+        if (f->front > f->back)
+                return f->front - f->back;
+        return f->length - f->back + f->front;
 }
