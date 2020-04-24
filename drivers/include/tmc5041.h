@@ -4,6 +4,25 @@
 #include "stm32f4xx.h"
 #include "math_utils.h"
 
+// Status byte defines
+#define STATUS_BIT_RESET_FLAG         0
+#define STATUS_BIT_DRIVER_ERROR_1     1
+#define STATUS_BIT_DRIVER_ERROR_2     2
+#define STATUS_BIT_VELOCITY_REACHED_1 3
+#define STATUS_BIT_VELOCITY_REACHED_2 4
+#define STATUS_BIT_STATUS_STOP_1      5
+#define STATUS_BIT_STATUS_STOP_1      6
+#define STATUS_BIT_RESERVED           7
+
+#define STATUS_RESET_FLAG            (uint8_t)(0x01 << STATUS_BIT_RESET_FLAG)
+#define STATUS_DRIVER_ERROR_1        (uint8_t)(0x01 << STATUS_BIT_DRIVER_ERROR_1)
+#define STATUS_DRIVER_ERROR_2        (uint8_t)(0x01 << STATUS_BIT_DRIVER_ERROR_2)
+#define STATUS_VELOCITY_REACHED_1    (uint8_t)(0x01 << STATUS_BIT_VELOCITY_REACHED_1)
+#define STATUS_VELOCITY_REACHED_2    (uint8_t)(0x01 << STATUS_BIT_VELOCITY_REACHED_2)
+#define STATUS_STATUS_STOP_1         (uint8_t)(0x01 << STATUS_BIT_STATUS_STOP_1)
+#define STATUS_STATUS_STOP_1         (uint8_t)(0x01 << STATUS_BIT_STATUS_STOP_1)
+#define STATUS_RESERVED              (uint8_t)(0x01 << STATUS_BIT_RESERVED)
+
 // TMC5041 register addresses
 extern const uint8_t tmc5041_GCONF;
 extern const uint8_t tmc5041_GSTAT;

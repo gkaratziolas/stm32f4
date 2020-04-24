@@ -107,7 +107,6 @@ void tmc5041_spi_transfer(struct tmc5041_command *command,
 
 uint8_t tmc5041_reg_write(uint8_t reg, uint32_t data)
 {
-
         struct tmc5041_command command = {
                 .reg  = reg + 0x80,
                 .data = data
