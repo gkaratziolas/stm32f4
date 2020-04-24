@@ -4,6 +4,18 @@
 
 #include "gpio.h"
 
+/* Structs */
+// TMC5041 command structs
+struct tmc5041_command {
+        uint8_t  reg;
+        uint32_t data;
+};
+
+struct tmc5041_reply {
+        uint8_t  status;
+        uint32_t data;
+};
+
 // TMC5041 register addresses
 const uint8_t tmc5041_GCONF        = 0x00;
 const uint8_t tmc5041_GSTAT        = 0x01;
@@ -40,7 +52,7 @@ void tmc5041_spi_transfer(struct tmc5041_command *command,
                           struct tmc5041_reply   *reply)
 {
         // Dummy read to clear RX buff
-        uint8_t dummy = SPI1->DR;
+        (void)(SPI1->DR);
 
         // Set nSS low (SPI active)
         gpio_clear(4, GPIOA);
@@ -93,7 +105,7 @@ void tmc5041_spi_transfer(struct tmc5041_command *command,
         gpio_set(4, GPIOA);
 }
 
-void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status)
+uint8_t tmc5041_reg_write(uint8_t reg, uint32_t data)
 {
 
         struct tmc5041_command command = {
@@ -102,10 +114,10 @@ void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status)
         };
         struct tmc5041_reply dummy;
         tmc5041_spi_transfer(&command, &dummy);
-        *status = dummy.status;
+        return dummy.status;
 }
 
-uint32_t tmc5041_read_reg(uint8_t reg, uint8_t *status)
+uint8_t tmc5041_reg_read(uint8_t reg, uint32_t *data)
 {
         struct tmc5041_command command = {
                 .reg  = reg,
@@ -115,27 +127,34 @@ uint32_t tmc5041_read_reg(uint8_t reg, uint8_t *status)
         tmc5041_spi_transfer(&command, &reply);
         tmc5041_spi_transfer(&command, &reply);
 
-        *status = reply.status;
-        return reply.data;
+        *data = reply.data;
+
+        return reply.status;
 }
 
-uint32_t tmc5041_mask_reg(uint8_t reg, uint32_t mask, uint8_t *status)
+uint8_t tmc5041_reg_mask(uint8_t reg, uint32_t mask)
 {
-        uint32_t data = tmc5041_read_reg(reg, status);
+        uint32_t data;
+        uint8_t status = tmc5041_read_reg(reg, &data);
         data &= mask;
-        tmc5041_write_reg(reg, data, status);
+        tmc5041_write_reg(reg, data);
+        return status;
 }
 
-void tmc5041_set_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status)
+uint8_t tmc5041_reg_bit_set(uint8_t reg, uint8_t bit)
 {
-        uint32_t data = tmc5041_read_reg(reg, status);
+        uint32_t data;
+        uint8_t status = tmc5041_read_reg(reg, &data);
         data |= (1 << bit);
-        tmc5041_write_reg(reg, data, status);      
+        status |= tmc5041_write_reg(reg, data);
+        return status;
 }
 
-void tmc5041_reset_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status)
+uint8_t tmc5041_reg_bit_reset(uint8_t reg, uint8_t bit)
 {
-        uint32_t data = tmc5041_read_reg(reg, status);
+        uint32_t data;
+        uint8_t status = tmc5041_read_reg(reg, &data);
         data &= ~(1 << bit);
-        tmc5041_write_reg(reg, data, status);      
+        status |= tmc5041_write_reg(reg, data);
+        return status;      
 }

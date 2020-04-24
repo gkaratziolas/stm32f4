@@ -28,25 +28,14 @@ extern const uint8_t tmc5041_COOLCONF[];
 extern const uint8_t tmc5041_RAMP_STAT[];
 extern const uint8_t tmc5041_DRV_STATUS[];
 
-/* Structs */
-// TMC5041 command structs
-struct tmc5041_command {
-        uint8_t  reg;
-        uint32_t data;
-};
+// Register read/write
+uint8_t tmc5041_reg_write(uint8_t reg, uint32_t data);
+uint8_t tmc5041_reg_read(uint8_t reg, uint32_t *data);
 
-struct tmc5041_reply {
-        uint8_t  status;
-        uint32_t data;
-};
+// Alter register content
+uint8_t tmc5041_reg_mask(uint8_t reg, uint32_t mask);
+uint8_t tmc5041_reg_bit_set(uint8_t reg, uint8_t bit);
+uint8_t tmc5041_reg_bit_reset(uint8_t reg, uint8_t bit);
 
-// TMC5041 motor controller reg read/write functions
-void tmc5041_spi_transfer(struct tmc5041_command *command,
-                          struct tmc5041_reply   *reply);
-void tmc5041_write_reg(uint8_t reg, uint32_t data, uint8_t *status);
-uint32_t tmc5041_read_reg (uint8_t reg, uint8_t *status);
-uint32_t tmc5041_mask_reg(uint8_t reg, uint32_t mask, uint8_t *status);
-void tmc5041_set_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status);
-void tmc5041_reset_reg_bit(uint8_t reg, uint8_t bit, uint8_t *status);
 
 #endif // TMC5041_H_
