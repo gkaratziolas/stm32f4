@@ -8,6 +8,13 @@
 
 #define GCODE_MAX_VARS 7
 
+#define READ_SUCCESS      (int)  0
+#define READ_ERR_NO_SPACE (int)  1
+#define READ_ERR_SYNTAX   (int) -1
+
+#define GCODE_VAR_FOUND     (int)  0
+#define GCODE_VAR_NOT_FOUND (int) -1
+
 // Supported gcodes
 enum gcode_code {
         gcode_NONE = 0,

@@ -15,7 +15,6 @@ char is_letter(char x);
 char is_numerical(char x);
 char upper(char x);
 
-// TODO: what happens if fifo overflows? 
 int gcode_read_line(struct fifo *gcode_command_fifo,
                     char *gcode_string, int str_length)
 {
@@ -33,6 +32,19 @@ int gcode_read_line(struct fifo *gcode_command_fifo,
         struct fifo gword_fifo = fifo_init(gwords,
                                            sizeof(struct gcode_word),
                                            GCODE_MAX_CODES_PER_LINE);
+
+        int gcommand_count;
+        int (i = 0; i < str_length; i++) {
+                if ((c == 'M') || (c == 'G'))
+                        gcommand_count++;
+        }
+        if (gcommand_count == 0) {
+                // no commands found in string
+                return READ_SUCCESS;
+        }
+        if (gcommand_count > fifo_space(gcode_command_fifo)) {
+                return READ_ERR_NO_SPACE;
+        }
 
         for (i = 0; i < str_length; i++) {
                 c = gcode_string[i];
@@ -67,10 +79,11 @@ int gcode_read_line(struct fifo *gcode_command_fifo,
                         break;
                 }
                 if (syntax_error != 0) {
-                        return syntax_error;
+                        return READ_ERR_SYNTAX * syntax_error;
                 }
         }
         gcode_process_codes(gcode_command_fifo, &gword_fifo);
+        return READ_SUCCESS;
 }
 
 /*
