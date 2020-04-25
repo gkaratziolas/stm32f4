@@ -12,7 +12,7 @@ struct int32_vec {
         union {
                 int32_t b;
                 int32_t y;
-        }
+        };
 };
 
 struct float32_vec {
@@ -23,7 +23,7 @@ struct float32_vec {
         union {
                 float32_t b;
                 float32_t y;
-        }
+        };
 };
 
 int32_t int_abs(int32_t a);

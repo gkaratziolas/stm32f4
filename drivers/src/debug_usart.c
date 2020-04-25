@@ -34,7 +34,7 @@ void debug_usart_print_timestamp(void)
 {
         char time_str[9];
         uint32_t i;
-        uint32_t uptime_ms = system_get_uptime_ms();
+        uint32_t uptime_ms = system_uptime_ms_get();
         uint32_t show_char = 0;
 
         sprintf(time_str, "%08lu", uptime_ms);

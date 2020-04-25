@@ -37,9 +37,9 @@ uint8_t pen_motion_start_AB(struct int32_vec target);
 void pen_motion_start_Z(uint8_t target);
 
 /* Check for motion complete */
-int pen_motion_check_complete(struct motion target);
-int pen_motion_check_complete_AB(struct motion target);
-int pen_motion_check_complete_Z();
+int pen_motion_check_complete(struct motion *target);
+int pen_motion_check_complete_AB(struct int32_vec *target);
+int pen_motion_check_complete_Z(uint8_t *target);
 
 /* tmc5041 interface functions */
 uint8_t pen_motors_init(void);
@@ -81,7 +81,7 @@ int gcode_decode_M05(struct gcode_command *gcommand);
 
 /* Motion FIFO for storing goto ab / goto z commands */
 struct motion motions[MAX_MOTIONS];
-struct fifo motion_fifo = fifo_init(motions, sizeof(struct motion), MAX_MOTIONS);
+struct fifo motion_fifo;
 
 /*
  * Starting point for AB motions.
@@ -90,21 +90,34 @@ struct fifo motion_fifo = fifo_init(motions, sizeof(struct motion), MAX_MOTIONS)
  */
 static struct int32_vec motion_AB_source;
 
+struct fifo *gcommand_fifo = NULL;
+
+static uint32_t pen_mm_conv_factor = 1000;
+
 /*
  ************************
  * Function definitions *
  ************************
  */
 
-void pen_init(void)
+void pen_init(struct fifo *g)
 {
+        motion_fifo = fifo_init(motions, sizeof(struct motion), MAX_MOTIONS);
+        gcommand_fifo = g;
         pen_motors_init();
 }
 
-void pen_serve(struct fifo *gcommand_fifo)
+void pen_deinit(void)
+{
+        pen_stop();
+        gcommand_fifo = (struct fifo *)NULL;
+}
+
+void pen_serve()
 {
         struct gcode_command gcommand;
-        if ((!fifo_empty(gcommand_fifo)) && (fifo_space(&motion_fifo) >= MAX_MOTIONS_PER_GCOMMAND)) {
+        if ((!fifo_empty(gcommand_fifo)) &&
+             (fifo_space(&motion_fifo) >= MAX_MOTIONS_PER_GCOMMAND)) {
                 fifo_pop(gcommand_fifo, &gcommand);
                 gcode_decode(&gcommand);
         }
@@ -119,16 +132,16 @@ void pen_serve(struct fifo *gcommand_fifo)
         pen_motion_start(&target);
 }
 
-int pen_motion_check_complete(struct motion target);
+int pen_motion_check_complete(struct motion *target)
 {
-        switch(target.type) {
+        switch(target->type) {
         case MOTION_AB:
-                if (pen_motion_check_complete_AB(motion_AB_source, &(target.ab)))) {
+                if (pen_motion_check_complete_AB(&(target->ab))) {
                         return 1;
                 }
                 return 0;
         case MOTION_Z:
-                if (pen_motion_check_complete_Z(&(target.z))) {
+                if (pen_motion_check_complete_Z(&(target->z))) {
                         return 1;
                 }
                 return 0;
@@ -145,8 +158,8 @@ int pen_motion_check_complete_AB(struct int32_vec *target)
         pen_get_position(&position);
 
         struct int32_vec dist_to_start  = int32_vec_sub(&position, &motion_AB_source);
-        struct int32_vec dist_to_end    = int32_vec_sub(&position, &target);
-        struct int32_vec dist_start_end = int32_vec_sub(&end, &motion_AB_source);
+        struct int32_vec dist_to_end    = int32_vec_sub(&position, target);
+        struct int32_vec dist_start_end = int32_vec_sub(target, &motion_AB_source);
 
         // If the pen is close to the target, or has travelled further than the
         // target from the start, then the motion is complete
@@ -160,7 +173,7 @@ int pen_motion_check_complete_AB(struct int32_vec *target)
         return 0;
 }
 
-int pen_motion_check_complete_Z(struct int32_vec *target)
+int pen_motion_check_complete_Z(uint8_t *target)
 {
         // TODO: check servo position here
         return 1;
@@ -168,7 +181,7 @@ int pen_motion_check_complete_Z(struct int32_vec *target)
 
 void pen_motion_start(struct motion *target)
 {
-        switch(target.type) {
+        switch(target->type) {
         case MOTION_AB:
                 pen_motion_start_AB(target->ab);
                 break;
@@ -184,7 +197,8 @@ void pen_motion_start(struct motion *target)
 
 uint8_t pen_motion_start_AB(struct int32_vec target)
 {
-        position = pen_get_position();
+        struct int32_vec position;
+        pen_get_position(&position);
         struct int32_vec distance = int32_vec_sub(&target, &position);
         struct float32_vec velocity;
 
@@ -239,7 +253,7 @@ uint8_t pen_motors_init()
 
         // Motor motion config
         for (i=0; i<2; i++) {
-                status |= pen_set_motor_motion_params_max(i);
+                status |= pen_motor_set_motion_params_max(i);
         }
         return status;
 }
@@ -313,7 +327,7 @@ uint8_t pen_stop(void)
         struct float32_vec vel;
         vel.a = 0.0f;
         vel.b = 0.0f;
-        return = pen_set_velocity(vel);
+        return pen_set_velocity(vel);
 }
 
 void convert_z_mm_to_pen_Z(float32_t *z_mm, uint8_t *z)
@@ -327,8 +341,8 @@ void convert_z_mm_to_pen_Z(float32_t *z_mm, uint8_t *z)
 
 void convert_xy_mm_to_AB(struct float32_vec *xy_mm, struct int32_vec *ab)
 {
-        int32_t x = (int32_t) (xy_mm->x * pen_conv_x);
-        int32_t y = (int32_t) (xy_mm->y * pen_conv_y);
+        int32_t x = (int32_t) (xy_mm->x * pen_mm_conv_factor);
+        int32_t y = (int32_t) (xy_mm->y * pen_mm_conv_factor);
         ab->a = x + y;
         ab->b = x - y;
 }
@@ -338,28 +352,28 @@ int gcode_decode(struct gcode_command *gcommand)
         int status;
         switch (gcommand->code) {
         case gcode_G00:
-                status = gcode_decode_G00(gcommad);
+                status = gcode_decode_G00(gcommand);
                 break;
         case gcode_G01:
-                status = gcode_decode_G01(gcommad);
+                status = gcode_decode_G01(gcommand);
                 break;
         case gcode_G02:
-                status = gcode_decode_G02(gcommad);
+                status = gcode_decode_G02(gcommand);
                 break;
         case gcode_G03:
-                status = gcode_decode_G03(gcommad);
+                status = gcode_decode_G03(gcommand);
                 break;
         case gcode_G21:
-                status = gcode_decode_G21(gcommad);
+                status = gcode_decode_G21(gcommand);
                 break;
         case gcode_M02:
-                status = gcode_decode_M02(gcommad);
+                status = gcode_decode_M02(gcommand);
                 break;
         case gcode_M03:
-                status = gcode_decode_M03(gcommad);
+                status = gcode_decode_M03(gcommand);
                 break;
         case gcode_M05:
-                status = gcode_decode_M05(gcommad);
+                status = gcode_decode_M05(gcommand);
                 break;
         case gcode_GXX:
         case gcode_MXX:
@@ -379,14 +393,14 @@ int gcode_decode_G00(struct gcode_command *gcommand)
 
         if (gcode_command_read_var(gcommand, 'Z', &z_mm) == GCODE_VAR_FOUND) {
                 target.type = MOTION_Z;
-                convert_mm_to_pen_Z(&z_mm, &(target.z));
-                fifo_push(&motion_fifo, &target)
+                convert_z_mm_to_pen_Z(&z_mm, &(target.z));
+                fifo_push(&motion_fifo, &target);
         }
         if ((gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_FOUND) &&
             (gcode_command_read_var(gcommand, 'Y', &(xy_mm.y)) == GCODE_VAR_FOUND)) {
                 target.type = MOTION_AB;
-                convert_mm_to_pen_XZ(&xy_mm, &(target.ab));
-                fifo_push(&motion_fifo, &target)
+                convert_xy_mm_to_AB(&xy_mm, &(target.ab));
+                fifo_push(&motion_fifo, &target);
         }
         return 0;
 }
@@ -398,10 +412,12 @@ int gcode_decode_G01(struct gcode_command *gcommand)
 
 int gcode_decode_G02(struct gcode_command *gcommand)
 {
+        struct float32_vec xy_mm;
+        struct float32_vec ij_mm;
         if ((gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
             (gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
-            (gcode_command_read_var(gcommand, 'I', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
-            (gcode_command_read_var(gcommand, 'J', &(xy_mm.y)) == GCODE_VAR_NOT_FOUND)) {
+            (gcode_command_read_var(gcommand, 'I', &(ij_mm.x)) == GCODE_VAR_NOT_FOUND) ||
+            (gcode_command_read_var(gcommand, 'J', &(ij_mm.y)) == GCODE_VAR_NOT_FOUND)) {
                 return -1;
         }
         
@@ -410,10 +426,12 @@ int gcode_decode_G02(struct gcode_command *gcommand)
 
 int gcode_decode_G03(struct gcode_command *gcommand)
 {
+        struct float32_vec xy_mm;
+        struct float32_vec ij_mm;
         if ((gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
             (gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
-            (gcode_command_read_var(gcommand, 'I', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
-            (gcode_command_read_var(gcommand, 'J', &(xy_mm.y)) == GCODE_VAR_NOT_FOUND)) {
+            (gcode_command_read_var(gcommand, 'I', &(ij_mm.x)) == GCODE_VAR_NOT_FOUND) ||
+            (gcode_command_read_var(gcommand, 'J', &(ij_mm.y)) == GCODE_VAR_NOT_FOUND)) {
                 return -1;
         }
         

@@ -3,6 +3,7 @@
 
 #include "stm32f4xx.h"
 #include "math_utils.h"
+#include "fifo.h"
 
 /*
  ******************************
@@ -24,7 +25,7 @@
 #define RAMPMODE_HOLD     0x00000003
 
 // Square of distance threshold to mark coincidence 
-#define DIST_SQUARED_TARGTET_THRESHOLD (int64_t)200000
+#define DIST_SQUARED_TARGET_THRESHOLD (int64_t)200000
 
 #define MAX_MOTIONS              1024
 #define MAX_MOTIONS_PER_GCOMMAND  255
@@ -35,7 +36,8 @@
  ********************************
  */
 
-void pen_init(void);
+void pen_init(struct fifo *g);
+void pen_deinit(void);
 void pen_serve(void);
 
 #endif // PEN_PLOTTER_H_

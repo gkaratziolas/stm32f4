@@ -134,26 +134,26 @@ uint8_t tmc5041_reg_read(uint8_t reg, uint32_t *data)
 uint8_t tmc5041_reg_mask(uint8_t reg, uint32_t mask)
 {
         uint32_t data;
-        uint8_t status = tmc5041_read_reg(reg, &data);
+        uint8_t status = tmc5041_reg_read(reg, &data);
         data &= mask;
-        tmc5041_write_reg(reg, data);
+        status |= tmc5041_reg_write(reg, data);
         return status;
 }
 
 uint8_t tmc5041_reg_bit_set(uint8_t reg, uint8_t bit)
 {
         uint32_t data;
-        uint8_t status = tmc5041_read_reg(reg, &data);
+        uint8_t status = tmc5041_reg_read(reg, &data);
         data |= (1 << bit);
-        status |= tmc5041_write_reg(reg, data);
+        status |= tmc5041_reg_write(reg, data);
         return status;
 }
 
 uint8_t tmc5041_reg_bit_reset(uint8_t reg, uint8_t bit)
 {
         uint32_t data;
-        uint8_t status = tmc5041_read_reg(reg, &data);
+        uint8_t status = tmc5041_reg_read(reg, &data);
         data &= ~(1 << bit);
-        status |= tmc5041_write_reg(reg, data);
+        status |= tmc5041_reg_write(reg, data);
         return status;      
 }

@@ -18,10 +18,8 @@ char upper(char x);
 int gcode_read_line(struct fifo *gcode_command_fifo,
                     char *gcode_string, int str_length)
 {
-        char c;
+        char c = '\0';
         int i, i0, i1;
-        int in_comment = 0;
-        int in_command = 0;
 
         int syntax_error = 0;
 
@@ -33,8 +31,8 @@ int gcode_read_line(struct fifo *gcode_command_fifo,
                                            sizeof(struct gcode_word),
                                            GCODE_MAX_CODES_PER_LINE);
 
-        int gcommand_count;
-        int (i = 0; i < str_length; i++) {
+        int gcommand_count = 0;
+        for (i = 0; i < str_length; i++) {
                 if ((c == 'M') || (c == 'G'))
                         gcommand_count++;
         }

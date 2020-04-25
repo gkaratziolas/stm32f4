@@ -24,10 +24,6 @@
 #define COMMAND_GCODE_ERR  6
 
 #define GCODE_MAX_COMMANDS 10
-struct gcode_word gcommands[GCODE_MAX_COMMANDS];
-struct fifo gcommand_fifo = fifo_init(gcommands,
-                                      sizeof(struct gcode_command),
-                                      GCODE_MAX_COMMANDS);
 
 char gcode_string_copy_buffer[MAX_DATA_LENGTH];
 int  gcode_string_length = 0;
@@ -48,7 +44,13 @@ void handle_command(struct command_packet *p);
 
 int main(void)
 {
+        struct gcode_word gcommands[GCODE_MAX_COMMANDS];
+        struct fifo gcommand_fifo = fifo_init(gcommands,
+                                              sizeof(struct gcode_command),
+                                              GCODE_MAX_COMMANDS);
+
         system_init();
+        pen_init(&gcommand_fifo);
 
         struct command_packet p;
 
@@ -74,13 +76,14 @@ int main(void)
                         }
                 }
 
-                pen_serve(&gcommand_fifo);
+                pen_serve();
 
                 // check for new commands
                 if (command_usart_receive(&p)) {
                         handle_command(&p);
                 }
         }
+        pen_deinit();
 }
 
 void system_init()
@@ -91,12 +94,6 @@ void system_init()
         usart_init();
         nvic_init();
         command_usart_bind(USART1);
-        pen_init();
-}
-
-int load_gcode_string(char *source, int length)
-{
-
 }
 
 void handle_command(struct command_packet *p)
@@ -126,13 +123,13 @@ void handle_command(struct command_packet *p)
                         p->command = COMMAND_GCODE_BUSY;
                         break;
                 }
-                if (length > MAX_DATA_LENGTH) {
+                if (p->data_length > MAX_DATA_LENGTH) {
                         p->command = COMMAND_GCODE_ERR;
                         break;
                 }
-                gcode_string_length = p->length;
+                gcode_string_length = p->data_length;
                 gcode_string_command_count = 0;
-                for (i=0; i<p->length; i++) {
+                for (i=0; i<p->data_length; i++) {
                         if (p->data[i] == 'M' || p->data[i] == 'G') {
                                 gcode_string_command_count++;
                         }
