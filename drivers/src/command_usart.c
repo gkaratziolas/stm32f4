@@ -133,13 +133,31 @@ int command_usart_receive(struct command_packet *packet_copy)
 int command_usart_transmit(struct command_packet *tx_packet)
 {
         // should calculate crc here?
+        while (!USART_GetFlagStatus(command_usart, USART_FLAG_TXE)) {
+                __asm("nop");
+        }
         USART_SendData(command_usart, STARTA);
+        while (!USART_GetFlagStatus(command_usart, USART_FLAG_TXE)) {
+                __asm("nop");
+        }
         USART_SendData(command_usart, STARTB);
+        while (!USART_GetFlagStatus(command_usart, USART_FLAG_TXE)) {
+                __asm("nop");
+        }
         USART_SendData(command_usart, tx_packet->command);
+        while (!USART_GetFlagStatus(command_usart, USART_FLAG_TXE)) {
+                __asm("nop");
+        }
         USART_SendData(command_usart, tx_packet->data_length);
+        while (!USART_GetFlagStatus(command_usart, USART_FLAG_TXE)) {
+                __asm("nop");
+        }
         int i;
         for (i=0; i<tx_packet->data_length; i++) {
                 USART_SendData(command_usart, tx_packet->data[i]);
+                while (!USART_GetFlagStatus(command_usart, USART_FLAG_TXE)) {
+                        __asm("nop");
+                }
         }
         USART_SendData(command_usart, tx_packet->crc);
         return 1;
