@@ -132,6 +132,7 @@ int command_usart_receive(struct command_packet *packet_copy)
 
 int command_usart_transmit(struct command_packet *tx_packet)
 {
+        // should calculate crc here?
         USART_SendData(command_usart, STARTA);
         USART_SendData(command_usart, STARTB);
         USART_SendData(command_usart, tx_packet->command);

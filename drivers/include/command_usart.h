@@ -10,7 +10,6 @@ struct command_packet {
         uint8_t crc;
 };
 
-
 void command_usart_bind(USART_TypeDef *USARTx);
 void command_usart_unbind(void);
 int  command_usart_receive(struct command_packet *packet_copy);
