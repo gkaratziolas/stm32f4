@@ -10,18 +10,28 @@
 #include "command_usart.h"
 #include "debug_usart.h"
 #include "pen_plotter.h"
+#include "gcode_reader.h"
 #include "gpio.h"
 #include "fifo.h"
 
 /* Preprocessor defines and constants */
 // USART command codes
-#define COMMAND_RESET 0x01
-#define COMMAND_LED   0x02
-#define COMMAND_MOVE  0x03
+#define COMMAND_RESET      1
+#define COMMAND_LED        2
+#define COMMAND_MOVE       3
+#define COMMAND_GCODE      4
+#define COMMAND_GCODE_BUSY 5
+#define COMMAND_GCODE_ERR  6
 
-#define MOTION_FIFO_LENGTH 10
-struct int32_vec motion_fifo_array[MOTION_FIFO_LENGTH];
-struct fifo motion_fifo;
+#define GCODE_MAX_COMMANDS 10
+struct gcode_word gcommands[GCODE_MAX_COMMANDS];
+struct fifo gcommand_fifo = fifo_init(gcommands,
+                                      sizeof(struct gcode_command),
+                                      GCODE_MAX_COMMANDS);
+
+char gcode_string_copy_buffer[MAX_DATA_LENGTH];
+int  gcode_string_length = 0;
+int  gcode_string_command_count = 0;
 
 /* Function prototypes */
 // Peripheral Initialisation functions
@@ -31,10 +41,49 @@ void usart_init(void);
 void spi_init(void);
 void nvic_init(void);
 
+void system_init(void);
+
 // Handler for incoming usart commands
 void handle_command(struct command_packet *p);
 
 int main(void)
+{
+        system_init();
+
+        struct command_packet p;
+
+        int status;
+
+        while (1) {
+                if (gcode_string_length > 0) {
+                        if (fifo_space(&gcommand_fifo) >= gcode_string_command_count) {
+                                status = gcode_read_line(&gcommand_fifo, gcode_string_copy_buffer, gcode_string_length);
+                                switch (status) {
+                                case READ_SUCCESS:
+                                        gcode_string_length = 0;
+                                break;
+                                case READ_ERR_NO_SPACE:
+                                        // Shouldn't arrive here!
+                                        ;;
+                                break;
+                                default:
+                                        // TODO: add some sort of error here!
+                                        gcode_string_length = 0;
+                                break;
+                                }
+                        }
+                }
+
+                pen_serve(&gcommand_fifo);
+
+                // check for new commands
+                if (command_usart_receive(&p)) {
+                        handle_command(&p);
+                }
+        }
+}
+
+void system_init()
 {
         clock_init();
         io_init();
@@ -42,40 +91,12 @@ int main(void)
         usart_init();
         nvic_init();
         command_usart_bind(USART1);
-        debug_usart_bind(USART1);
+        pen_init();
+}
 
-        pen_motors_init();
+int load_gcode_string(char *source, int length)
+{
 
-        motion_fifo = fifo_init(motion_fifo_array,
-                                sizeof(motion_fifo_array[0]),
-                                MOTION_FIFO_LENGTH);
-
-        struct command_packet p;
-
-        GPIOD->ODR = 0x00;
-
-        struct int32_vec start  = pen_get_position();
-        struct int32_vec target = start;
-        
-        target.x = 10000000;
-        target.y = 10000000;
-        pen_set_target_position(target);
-        while (1) {
-                if (pen_motion_check_complete(start, target)) {
-                        if (fifo_empty(&motion_fifo)) {
-                                GPIOD->ODR &= ~(1<<13);
-                                pen_stop();
-                        } else {
-                                start = pen_get_position();
-                                fifo_pop(&motion_fifo, (void *) &target);
-                                pen_set_target_position(target);
-                                GPIOD->ODR |= (1<<13);
-                        }
-                }
-                if (command_usart_receive(&p)) {
-                        handle_command(&p);
-                }
-        }
 }
 
 void handle_command(struct command_packet *p)
@@ -98,19 +119,25 @@ void handle_command(struct command_packet *p)
                 }
                 break;
         case COMMAND_MOVE:
-                if (p->data_length < 8) {
+                // do nothing for now
+                break;
+        case COMMAND_GCODE:
+                if (gcode_string_length > 0) {
+                        p->command = COMMAND_GCODE_BUSY;
                         break;
                 }
-                struct int32_vec target;
-                target.y = (uint32_t)(p->data[7]) << 24 |
-                           (uint32_t)(p->data[6]) << 16 |
-                           (uint32_t)(p->data[5]) <<  8 |
-                           (uint32_t)(p->data[4]) <<  0;
-                target.x = (uint32_t)(p->data[3]) << 24 |
-                           (uint32_t)(p->data[2]) << 16 |
-                           (uint32_t)(p->data[1]) <<  8 |
-                           (uint32_t)(p->data[0]) <<  0;
-                fifo_push(&motion_fifo, (void *) &target);
+                if (length > MAX_DATA_LENGTH) {
+                        p->command = COMMAND_GCODE_ERR;
+                        break;
+                }
+                gcode_string_length = p->length;
+                gcode_string_command_count = 0;
+                for (i=0; i<p->length; i++) {
+                        if (p->data[i] == 'M' || p->data[i] == 'G') {
+                                gcode_string_command_count++;
+                        }
+                        gcode_string_copy_buffer[i] = p->data[i];
+                }
                 break;
         }
         // Confirm packet was correctly interpreted by returning copy
@@ -138,11 +165,11 @@ void io_init(void)
 
         // Initialization of GPIOB
         GPIO_InitTypeDef GPIO_InitStruct;
-        GPIO_InitStruct.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_7;
-        GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+        GPIO_InitStruct.GPIO_Pin   = GPIO_Pin_6 | GPIO_Pin_7;
+        GPIO_InitStruct.GPIO_Mode  = GPIO_Mode_AF;
         GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
         GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
-        GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+        GPIO_InitStruct.GPIO_PuPd  = GPIO_PuPd_UP;
         GPIO_Init(GPIOB, &GPIO_InitStruct);
 
         GPIOA->MODER |= (

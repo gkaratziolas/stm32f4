@@ -26,6 +26,9 @@
 // Square of distance threshold to mark coincidence 
 #define DIST_SQUARED_TARGTET_THRESHOLD (int64_t)200000
 
+#define MAX_MOTIONS              1024
+#define MAX_MOTIONS_PER_GCOMMAND  255
+
 /*
  ********************************
  * public pen plotter functions *
