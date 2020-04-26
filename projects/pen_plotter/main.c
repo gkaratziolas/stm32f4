@@ -8,11 +8,14 @@
 #include "math_utils.h"
 
 #include "command_usart.h"
-#include "debug_usart.h"
 #include "pen_plotter.h"
 #include "gcode_reader.h"
 #include "gpio.h"
 #include "fifo.h"
+
+#ifdef DEBUG
+#include "debug_usart.h"
+#endif //DEBUG_
 
 /* Preprocessor defines and constants */
 // USART command codes
@@ -44,7 +47,7 @@ void handle_command(struct command_packet *p);
 
 int main(void)
 {
-        struct gcode_word gcommands[GCODE_MAX_COMMANDS];
+        struct gcode_command gcommands[GCODE_MAX_COMMANDS];
         struct fifo gcommand_fifo = fifo_init(gcommands,
                                               sizeof(struct gcode_command),
                                               GCODE_MAX_COMMANDS);
@@ -63,15 +66,14 @@ int main(void)
                                 switch (status) {
                                 case READ_SUCCESS:
                                         gcode_string_length = 0;
-                                break;
+                                        break;
                                 case READ_ERR_NO_SPACE:
                                         // Shouldn't arrive here!
-                                        ;;
-                                break;
+                                        break;
                                 default:
                                         // TODO: add some sort of error here!
                                         gcode_string_length = 0;
-                                break;
+                                        break;
                                 }
                         }
                 }
@@ -94,6 +96,9 @@ void system_init()
         usart_init();
         nvic_init();
         command_usart_bind(USART1);
+#ifdef DEBUG
+        debug_usart_bind(USART1);
+#endif // DEBUG_
 }
 
 void handle_command(struct command_packet *p)
