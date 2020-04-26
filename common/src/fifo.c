@@ -81,6 +81,8 @@ int fifo_empty(struct fifo *f)
 
 int fifo_space(struct fifo *f)
 {
+        if (fifo_full(f))
+                return 0;
         if (fifo_empty(f))
                 return f->length;
         if (f->front > f->back)
