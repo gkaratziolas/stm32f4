@@ -23,6 +23,8 @@ CFLAGS += -D__FPU_PRESENT
 CFLAGS += -mlittle-endian -mthumb -mcpu=cortex-m4 -mthumb-interwork
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16 -specs=nosys.specs
 
+CFLAGS += -DDEBUG
+
 # Include project headers
 CFLAGS += -I.
 CFLAGS += -I../../common/include
