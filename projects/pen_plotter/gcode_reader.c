@@ -1,5 +1,9 @@
 #include "gcode_reader.h"
 
+#ifdef DEBUG
+#include "debug_usart.h"
+#endif //DEBUG_
+
 enum gcode_read_state {
         IDLE,
         IN_COMMENT,
@@ -33,7 +37,7 @@ int gcode_read_line(struct fifo *gcode_command_fifo,
 
         int gcommand_count = 0;
         for (i = 0; i < str_length; i++) {
-                if ((c == 'M') || (c == 'G'))
+                if ((gcode_string[i] == 'M') || (gcode_string[i] == 'G'))
                         gcommand_count++;
         }
         if (gcommand_count == 0) {
@@ -204,8 +208,7 @@ int gcode_process_codes(struct fifo *gcommand_fifo, struct fifo *gword_fifo)
         }
 
         // At this point, tmp_instruction contains a valid code
-        while (!fifo_empty(gword_fifo)) {
-                fifo_pop(gword_fifo, &gword);
+        while (fifo_pop(gword_fifo, &gword) != FIFO_ERR_EMPTY) {
                 switch(gword.name) {
                 case 'G':
                 case 'M':
