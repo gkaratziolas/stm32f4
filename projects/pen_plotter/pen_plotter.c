@@ -90,9 +90,16 @@ struct fifo motion_fifo;
  */
 static struct int32_vec motion_AB_source;
 
+/*
+ * Starting point for AB gcode decoding.
+ * Updated whenever a gcode command is decoded.
+ * Used as reference starting point for any circular motions.
+ */
+static struct int32_vec latest_AB_target;
+
 struct fifo *gcommand_fifo = NULL;
 
-static uint32_t pen_mm_conv_factor = 1000;
+static uint32_t pen_mm_conv_factor = 100;
 
 /*
  ************************
@@ -104,6 +111,12 @@ void pen_init(struct fifo *g)
 {
         motion_fifo = fifo_init(motions, sizeof(struct motion), MAX_MOTIONS);
         gcommand_fifo = g;
+
+        latest_AB_target.a = 0;
+        latest_AB_target.b = 0;
+        motion_AB_source.a = 0;
+        motion_AB_source.b = 0;
+
         pen_motors_init();
 }
 
@@ -401,7 +414,9 @@ int gcode_decode_G00(struct gcode_command *gcommand)
                 target.type = MOTION_AB;
                 convert_xy_mm_to_AB(&xy_mm, &(target.ab));
                 fifo_push(&motion_fifo, &target);
+                latest_AB_target = target.ab;
         }
+
         return 0;
 }
 
@@ -414,6 +429,7 @@ int gcode_decode_G02(struct gcode_command *gcommand)
 {
         struct float32_vec xy_mm;
         struct float32_vec ij_mm;
+
         if ((gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
             (gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
             (gcode_command_read_var(gcommand, 'I', &(ij_mm.x)) == GCODE_VAR_NOT_FOUND) ||
