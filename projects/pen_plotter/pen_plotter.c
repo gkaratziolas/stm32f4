@@ -524,8 +524,8 @@ int gcode_decode_G02_G03(struct gcode_command *gcommand)
         }
 
         // Update latest target for use by the next G02/G03 command
-        latest_xy_target.x = pos_abs.x;
-        latest_xy_target.y = pos_abs.y;
+        latest_xy_target.x = XY_mm.x;
+        latest_xy_target.y = XY_mm.y;
         return 0;
 }
 
