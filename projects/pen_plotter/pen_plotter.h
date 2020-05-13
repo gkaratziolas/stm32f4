@@ -29,6 +29,7 @@
 
 #define MAX_MOTIONS              1024
 #define MAX_MOTIONS_PER_GCOMMAND  255
+#define ARC_SEGMENT_LENGTH (float32_t) 1 //mm
 
 /*
  ********************************

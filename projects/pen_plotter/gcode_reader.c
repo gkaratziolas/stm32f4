@@ -23,7 +23,7 @@ int gcode_read_line(struct fifo *gcode_command_fifo,
                     char *gcode_string, int str_length)
 {
         char c = '\0';
-        int i, i0, i1;
+        int i, i0, i1 = 0;
 
         int syntax_error = 0;
 

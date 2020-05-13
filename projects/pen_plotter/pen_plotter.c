@@ -3,7 +3,12 @@
 #include "math_utils.h"
 #include "tmc5041.h"
 #include "gcode_reader.h"
+
 // TODO: #include "servo_generic.h"
+
+#ifdef DEBUG
+#include "debug_usart.h"
+#endif //DEBUG_
 
 /*
  ****************************************
@@ -91,15 +96,15 @@ struct fifo motion_fifo;
 static struct int32_vec motion_AB_source;
 
 /*
- * Starting point for AB gcode decoding.
+ * Starting point for xy gcode decoding.
  * Updated whenever a gcode command is decoded.
  * Used as reference starting point for any circular motions.
  */
-static struct int32_vec latest_AB_target;
+static struct float32_vec latest_xy_target;
 
 struct fifo *gcommand_fifo = NULL;
 
-static uint32_t pen_mm_conv_factor = 100;
+static uint32_t pen_mm_conv_factor = 500;
 
 /*
  ************************
@@ -112,8 +117,9 @@ void pen_init(struct fifo *g)
         motion_fifo = fifo_init(motions, sizeof(struct motion), MAX_MOTIONS);
         gcommand_fifo = g;
 
-        latest_AB_target.a = 0;
-        latest_AB_target.b = 0;
+        // TODO: Should be updated by homing routine
+        latest_xy_target.x = 0;
+        latest_xy_target.y = 0;
         motion_AB_source.a = 0;
         motion_AB_source.b = 0;
 
@@ -215,7 +221,7 @@ uint8_t pen_motion_start_AB(struct int32_vec target)
         struct int32_vec distance = int32_vec_sub(&target, &position);
         struct float32_vec velocity;
 
-        if (int_abs(distance.a) >= int_abs(distance.b)) {
+        if (int32_abs(distance.a) >= int32_abs(distance.b)) {
                 if (distance.a > 0)
                         velocity.a = 1.0f;
                 else
@@ -371,10 +377,8 @@ int gcode_decode(struct gcode_command *gcommand)
                 status = gcode_decode_G01(gcommand);
                 break;
         case gcode_G02:
-                status = gcode_decode_G02(gcommand);
-                break;
         case gcode_G03:
-                status = gcode_decode_G03(gcommand);
+                status = gcode_decode_G02_G03(gcommand);
                 break;
         case gcode_G21:
                 status = gcode_decode_G21(gcommand);
@@ -414,7 +418,8 @@ int gcode_decode_G00(struct gcode_command *gcommand)
                 target.type = MOTION_AB;
                 convert_xy_mm_to_AB(&xy_mm, &(target.ab));
                 fifo_push(&motion_fifo, &target);
-                latest_AB_target = target.ab;
+                latest_xy_target.x = xy_mm.x;
+                latest_xy_target.y = xy_mm.y;
         }
 
         return 0;
@@ -425,32 +430,100 @@ int gcode_decode_G01(struct gcode_command *gcommand)
         return gcode_decode_G00(gcommand);
 }
 
-int gcode_decode_G02(struct gcode_command *gcommand)
+int gcode_decode_G02_G03(struct gcode_command *gcommand)
 {
-        struct float32_vec xy_mm;
-        struct float32_vec ij_mm;
-
-        if ((gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
-            (gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
-            (gcode_command_read_var(gcommand, 'I', &(ij_mm.x)) == GCODE_VAR_NOT_FOUND) ||
-            (gcode_command_read_var(gcommand, 'J', &(ij_mm.y)) == GCODE_VAR_NOT_FOUND)) {
+        // Read out parameters
+        // TODO: Add support for X, Y, R parameter set
+        struct float32_vec XY_mm;
+        struct float32_vec IJ_mm;
+        if ((gcode_command_read_var(gcommand, 'X', &(XY_mm.x)) == GCODE_VAR_NOT_FOUND) ||
+            (gcode_command_read_var(gcommand, 'Y', &(XY_mm.y)) == GCODE_VAR_NOT_FOUND) ||
+            (gcode_command_read_var(gcommand, 'I', &(IJ_mm.x)) == GCODE_VAR_NOT_FOUND) ||
+            (gcode_command_read_var(gcommand, 'J', &(IJ_mm.y)) == GCODE_VAR_NOT_FOUND)) {
                 return -1;
         }
-        
-        return 0;
-}
 
-int gcode_decode_G03(struct gcode_command *gcommand)
-{
-        struct float32_vec xy_mm;
-        struct float32_vec ij_mm;
-        if ((gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
-            (gcode_command_read_var(gcommand, 'X', &(xy_mm.x)) == GCODE_VAR_NOT_FOUND) ||
-            (gcode_command_read_var(gcommand, 'I', &(ij_mm.x)) == GCODE_VAR_NOT_FOUND) ||
-            (gcode_command_read_var(gcommand, 'J', &(ij_mm.y)) == GCODE_VAR_NOT_FOUND)) {
+        // Calculate start and end position vectors
+        struct float32_vec centre = float32_vec_add(&latest_xy_target, &IJ_mm);
+        struct float32_vec start  = float32_vec_sub(&latest_xy_target, &centre);
+        struct float32_vec target = float32_vec_sub(&XY_mm, &centre);
+
+        // Calculate angle between start and end point (relative to centre)
+        float32_t theta;
+        if (gcommand->code == gcode_G02) {
+                theta = cw_angle(&start, &target);
+        } else if (gcommand->code == gcode_G03) {
+                theta = cw_angle(&start, &target);
+        } else {
+                // error
                 return -1;
         }
-        
+
+        // Calculate arc length and number of points in arc approximation
+        float32_t arc_length = theta * float32_vec_mag(&start);
+        int32_t N = (int32_t) (arc_length / ARC_SEGMENT_LENGTH);
+        if (N > MAX_MOTIONS_PER_GCOMMAND)
+                N = MAX_MOTIONS_PER_GCOMMAND;
+        float32_t d_theta = theta / N;
+
+        char buf[255];
+        sprintf(buf, "%f, %d\n", theta, N);
+        debug_usart_print(buf);
+
+        /* Prepare d_theta rotation matrix
+         *
+         *        (xx yx)
+         *        (xy yy)
+         */
+        float32_t rot_xx;
+        float32_t rot_yx;
+        float32_t rot_xy;
+        float32_t rot_yy;
+        if (gcommand->code == gcode_G02) {
+                rot_xx = arm_cos_f32(d_theta);
+                rot_yx = arm_sin_f32(d_theta);
+                rot_xy = -1 * rot_yx;
+                rot_yy = rot_xx;
+        } else if (gcommand->code == gcode_G03) {
+                rot_xx = arm_cos_f32(d_theta);
+                rot_xy = arm_sin_f32(d_theta);
+                rot_yx = -1 * rot_xy;
+                rot_yy = rot_xx;
+        } else {
+                // error
+                return -1;
+        }
+
+        // Successively apply d_theta rotation matrix until at target
+        struct float32_vec pos;
+        struct float32_vec pos_copy;
+        struct float32_vec pos_abs;
+        struct motion ntarget;
+        int32_t i;
+        pos.x = start.x;
+        pos.y = start.y;
+        for (i=0; i<N; i++) {
+                // Copy position
+                pos_copy.x = pos.x;
+                pos_copy.y = pos.y;
+
+                // Apply rotation matrix
+                pos.x = (pos_copy.x * rot_xx) + (pos_copy.y * rot_yx);
+                pos.y = (pos_copy.x * rot_xy) + (pos_copy.y * rot_yy);
+                
+                // Add offset vector to position;
+                pos_abs.x = centre.x + pos.x;
+                pos_abs.y = centre.y + pos.y;
+
+                // Push new target to motion fifo
+                ntarget.type = MOTION_AB;
+                convert_xy_mm_to_AB(&pos_abs, &(ntarget.ab));
+                fifo_push(&motion_fifo, &ntarget);
+        }
+
+        // Update latest target for use by the next G02/G03 command
+        latest_xy_target.x = pos_abs.x;
+        latest_xy_target.y = pos_abs.y;
         return 0;
 }
 
