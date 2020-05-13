@@ -26,7 +26,8 @@ struct float32_vec {
         };
 };
 
-int32_t int_abs(int32_t a);
+int32_t int32_abs(int32_t A);
+float32_t float32_abs(float32_t A);
 
 struct int32_vec int32_vec_add(struct int32_vec *A, struct int32_vec *B);
 struct int32_vec int32_vec_sub(struct int32_vec *A, struct int32_vec *B);
@@ -34,6 +35,10 @@ int64_t int32_vec_mag_squared(struct int32_vec *A);
 
 struct float32_vec float32_vec_add(struct float32_vec *A, struct float32_vec *B);
 struct float32_vec float32_vec_sub(struct float32_vec *A, struct float32_vec *B);
+float32_t float32_vec_mag(struct float32_vec *A);
 float32_t float32_vec_mag_squared(struct float32_vec *A);
+
+float32_t ccw_angle(struct float32_vec *A, struct float32_vec *B);
+float32_t cw_angle(struct float32_vec *A, struct float32_vec *B);
 
 #endif // MATH_UTILS_H_
