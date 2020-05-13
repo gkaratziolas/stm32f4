@@ -75,25 +75,6 @@ float32_t float32_abs(float32_t A)
         return -1 * A;
 }
 
-// Returns counter-clockwise angle from vec a to vec b. (2*PI > theta >= 0)
-float32_t ccw_angle(struct float32_vec *A, struct float32_vec *B)
-{
-        // calculate determinant
-        float32_t alpha = A->x * B->y - A->y * B->x;
-        
-        // calculate dot product
-        float32_t beta  = A->x * B->x + A->y * B->y;
-
-        // calculate cw angle (PI >= angle > -PI )
-        float32_t angle = atan2f(alpha, beta);
-
-        if (angle >= 0)
-                return angle;
-        // If angle is negative, it represents the clockwise rotation.
-        // Add to 2PI and return
-        return 2*PI + angle;    
-}
-
 // Returns clockwise angle from vec a to vec b. (2*PI > theta >= 0)
 float32_t cw_angle(struct float32_vec *A, struct float32_vec *B)
 {
@@ -110,4 +91,10 @@ float32_t cw_angle(struct float32_vec *A, struct float32_vec *B)
         if (angle <= 0)
                 return -1 * angle;
         return 2*PI - angle;
+}
+
+// Returns counter-clockwise angle from vec a to vec b. (2*PI > theta >= 0)
+float32_t ccw_angle(struct float32_vec *A, struct float32_vec *B)
+{
+        return cw_angle(B, A);
 }
