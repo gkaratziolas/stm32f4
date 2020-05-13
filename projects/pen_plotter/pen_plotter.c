@@ -362,8 +362,8 @@ void convert_xy_mm_to_AB(struct float32_vec *xy_mm, struct int32_vec *ab)
 {
         int32_t x = (int32_t) (xy_mm->x * pen_mm_conv_factor);
         int32_t y = (int32_t) (xy_mm->y * pen_mm_conv_factor);
-        ab->a = x + y;
-        ab->b = x - y;
+        ab->a = x - y;
+        ab->b = x + y;
 }
 
 int gcode_decode(struct gcode_command *gcommand)
@@ -453,7 +453,7 @@ int gcode_decode_G02_G03(struct gcode_command *gcommand)
         if (gcommand->code == gcode_G02) {
                 theta = cw_angle(&start, &target);
         } else if (gcommand->code == gcode_G03) {
-                theta = cw_angle(&start, &target);
+                theta = ccw_angle(&start, &target);
         } else {
                 // error
                 return -1;
@@ -479,16 +479,18 @@ int gcode_decode_G02_G03(struct gcode_command *gcommand)
         float32_t rot_yx;
         float32_t rot_xy;
         float32_t rot_yy;
+        float32_t sin_d_theta = arm_sin_f32(d_theta);
+        float32_t cos_d_theta = arm_cos_f32(d_theta);
         if (gcommand->code == gcode_G02) {
-                rot_xx = arm_cos_f32(d_theta);
-                rot_yx = arm_sin_f32(d_theta);
-                rot_xy = -1 * rot_yx;
-                rot_yy = rot_xx;
+                rot_xx =  cos_d_theta;
+                rot_xy = -1 * sin_d_theta;
+                rot_yx =      sin_d_theta;
+                rot_yy =  cos_d_theta;
         } else if (gcommand->code == gcode_G03) {
-                rot_xx = arm_cos_f32(d_theta);
-                rot_xy = arm_sin_f32(d_theta);
-                rot_yx = -1 * rot_xy;
-                rot_yy = rot_xx;
+                rot_xx =  cos_d_theta;
+                rot_xy =       sin_d_theta;
+                rot_yx =  -1 * sin_d_theta;
+                rot_yy =  cos_d_theta;
         } else {
                 // error
                 return -1;
