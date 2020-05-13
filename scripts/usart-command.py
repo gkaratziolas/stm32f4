@@ -84,10 +84,11 @@ def transmit_gcode_file(ser, file_name):
 			if not line:
 				break
 			line = line.replace("\n", "")
+			print(line)
+			x = input()
 			send_gcode_string(ser, line)
 			time.sleep(0.1)
 			read_serial(ser)
-			print(line)
 
 
 if __name__ == "__main__":
