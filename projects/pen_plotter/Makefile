@@ -1,5 +1,5 @@
 # Put your source files here (or *.c, etc)
-SRCS=main.c math_utils.c ../../common/src/*.c ../../drivers/src/*.c
+SRCS=*.c ../../common/src/*.c ../../drivers/src/*.c
 
 # Library modules
 SRCS += stm32f4xx_gpio.c stm32f4xx_rcc.c stm32f4xx_usart.c misc.c
@@ -22,11 +22,15 @@ CFLAGS += -DARM_MATH_CM4
 CFLAGS += -D__FPU_PRESENT
 CFLAGS += -mlittle-endian -mthumb -mcpu=cortex-m4 -mthumb-interwork
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16 -specs=nosys.specs
+
+CFLAGS += -DDEBUG
+
+# Include project headers
+CFLAGS += -I.
 CFLAGS += -I../../common/include
 CFLAGS += -I../../drivers/include
 
 # Include files from STM libraries
-CFLAGS += -I.
 CFLAGS += -I$(STM_COMMON)/Utilities/STM32F4-Discovery
 CFLAGS += -I$(STM_COMMON)/Libraries/CMSIS/Include
 CFLAGS += -I$(STM_COMMON)/Libraries/CMSIS/ST/STM32F4xx/Include
